@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Country Race">
+<meta name="theme-color" content="#050409">
+<title>Country Race</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;700&family=Inter:wght@600;800&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root { --bg:#050409; --panel:#121019; --ink:#f4f1ff; --muted:#9a94b8; --line:#2a2540; --a:#3df5ff; --b:#ffc83d; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); overflow:hidden; touch-action:manipulation;
+    font-family:Inter,-apple-system,system-ui,sans-serif; -webkit-user-select:none; user-select:none; }
+  canvas.layer { position:fixed; left:0; top:0; width:100vw; height:100vh; height:100dvh; display:block; }
+  #hud { pointer-events:none; }
+  #setup { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; padding:16px;
+    background:radial-gradient(120% 70% at 50% 0%, rgba(61,245,255,.18), transparent 60%), rgba(5,4,9,.95); overflow:auto; }
+  #setup.hidden { display:none; }
+  .card { width:100%; max-width:420px; background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:22px 20px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .card h1 { font-family:Teko,Impact,sans-serif; font-weight:700; letter-spacing:2px; font-size:48px; margin:0; line-height:.95;
+    background:linear-gradient(90deg,var(--a),#9be7ff 45%,var(--b) 55%,#ffe08a); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .card p.sub { margin:4px 0 14px; color:var(--muted); font-size:14px; line-height:1.4; }
+  label { display:block; font-size:12px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:12px 0 6px; }
+  input[type=text] { width:100%; box-sizing:border-box; background:#09080f; color:var(--ink); border:1px solid var(--line); border-radius:12px; padding:12px; font-size:16px; font-family:inherit; outline:none; }
+  .chk { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:14px; text-transform:none; letter-spacing:0; font-weight:600; color:var(--ink); }
+  .chk input { width:20px; height:20px; accent-color:var(--a); flex:none; }
+  .btns { display:flex; gap:10px; margin-top:18px; }
+  button { flex:1; border:0; border-radius:12px; padding:14px; font-size:16px; font-weight:800; font-family:inherit; cursor:pointer; }
+  #go { background:linear-gradient(90deg,#00b3c7,var(--a)); color:#001518; }
+  #demo { background:#221d33; color:var(--ink); }
+  #status { margin-top:12px; font-size:13px; color:var(--muted); min-height:18px; }
+  #menu { position:fixed; right:10px; bottom:10px; z-index:5; width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,.08); color:#fff; border:0; font-size:16px; padding:0; opacity:.35; }
+</style>
+</head>
+<body>
+<canvas id="gl" class="layer"></canvas>
+<canvas id="hud" class="layer"></canvas>
+<button id="menu" title="Settings">⚙︎</button>
+<div id="setup">
+  <div class="card">
+    <h1>COUNTRY RACE</h1>
+    <p class="sub">Viewers comment their country to join the race. Comments and likes push their flag, gifts give turbo boosts. Each race lasts about 2 to 4 minutes, then a new one starts automatically.</p>
+    <label for="user">Your TikTok @</label>
+    <input id="user" type="text" placeholder="automadesk" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label class="chk"><input id="music" type="checkbox" checked> Music and sound effects</label>
+    <div class="btns"><button id="go">Start live</button><button id="demo">Demo</button></div>
+    <div id="status"></div>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const rand = (a, b) => a + Math.random() * (b - a), clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t;
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+const $ = (id) => document.getElementById(id);
+
+// ================= countries =================
+const C = [
+  ['BR', 'Brazil', 'brasil brazil brasileiro brasileira br'], ['US', 'USA', 'usa eua america united states estados unidos us'], ['MX', 'Mexico', 'mexico méxico mexicano'],
+  ['PT', 'Portugal', 'portugal portugues português'], ['AR', 'Argentina', 'argentina argentino'], ['CO', 'Colombia', 'colombia colômbia colombiano'],
+  ['ES', 'Spain', 'spain espanha españa espana'], ['FR', 'France', 'france frança francia'], ['DE', 'Germany', 'germany alemanha alemania deutschland'],
+  ['IT', 'Italy', 'italy italia itália'], ['GB', 'UK', 'uk england inglaterra reino unido united kingdom britain'], ['CA', 'Canada', 'canada canadá'],
+  ['PE', 'Peru', 'peru perú'], ['CL', 'Chile', 'chile chileno'], ['VE', 'Venezuela', 'venezuela venezolano'], ['EC', 'Ecuador', 'ecuador equador'],
+  ['BO', 'Bolivia', 'bolivia bolívia'], ['PY', 'Paraguay', 'paraguay paraguai'], ['UY', 'Uruguay', 'uruguay uruguai'], ['CU', 'Cuba', 'cuba'],
+  ['DO', 'Dominican Rep.', 'dominicana republica dominicana dominican'], ['PR', 'Puerto Rico', 'puerto rico porto rico'], ['GT', 'Guatemala', 'guatemala'],
+  ['HN', 'Honduras', 'honduras'], ['SV', 'El Salvador', 'el salvador salvador'], ['NI', 'Nicaragua', 'nicaragua'], ['CR', 'Costa Rica', 'costa rica'],
+  ['PA', 'Panama', 'panama panamá'], ['HT', 'Haiti', 'haiti haití'], ['JM', 'Jamaica', 'jamaica'], ['AO', 'Angola', 'angola'], ['MZ', 'Mozambique', 'mozambique moçambique mocambique'],
+  ['CV', 'Cape Verde', 'cabo verde cape verde'], ['NG', 'Nigeria', 'nigeria nigéria'], ['GH', 'Ghana', 'ghana gana'], ['ZA', 'South Africa', 'south africa africa do sul áfrica do sul'],
+  ['MA', 'Morocco', 'morocco marrocos marruecos'], ['EG', 'Egypt', 'egypt egito egipto'], ['KE', 'Kenya', 'kenya quenia quênia'], ['SN', 'Senegal', 'senegal'],
+  ['TR', 'Turkey', 'turkey turquia türkiye'], ['RU', 'Russia', 'russia rússia rusia'], ['UA', 'Ukraine', 'ukraine ucrania ucrânia'], ['PL', 'Poland', 'poland polonia polônia'],
+  ['NL', 'Netherlands', 'netherlands holanda holland paises baixos'], ['BE', 'Belgium', 'belgium bélgica belgica'], ['CH', 'Switzerland', 'switzerland suíça suiza suica'],
+  ['SE', 'Sweden', 'sweden suécia suecia'], ['NO', 'Norway', 'norway noruega'], ['IE', 'Ireland', 'ireland irlanda'], ['RO', 'Romania', 'romania romênia rumania'],
+  ['GR', 'Greece', 'greece grécia grecia'], ['IN', 'India', 'india índia'], ['PK', 'Pakistan', 'pakistan paquistão paquistao'], ['BD', 'Bangladesh', 'bangladesh'],
+  ['PH', 'Philippines', 'philippines filipinas pinoy'], ['ID', 'Indonesia', 'indonesia indonésia'], ['MY', 'Malaysia', 'malaysia malásia malasia'], ['VN', 'Vietnam', 'vietnam vietnã'],
+  ['TH', 'Thailand', 'thailand tailândia tailandia'], ['JP', 'Japan', 'japan japão japon japao'], ['KR', 'Korea', 'korea coreia corea'], ['CN', 'China', 'china'],
+  ['SA', 'Saudi Arabia', 'saudi arabia arabia saudita'], ['AE', 'UAE', 'uae emirados dubai emirates'], ['IL', 'Israel', 'israel'], ['IR', 'Iran', 'iran irã'],
+  ['IQ', 'Iraq', 'iraq iraque irak'], ['DZ', 'Algeria', 'algeria argélia argelia'], ['AU', 'Australia', 'australia austrália'], ['NZ', 'New Zealand', 'new zealand nova zelandia nueva zelanda'],
+];
+const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const flagOf = (iso) => String.fromCodePoint(...[...iso].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+const BY = new Map(); const ALIAS = [];
+for (const [iso, name] of C) BY.set(iso, { iso, name, flag: flagOf(iso) });
+// build aliases: phrases first (longest), then single words
+for (const [iso, name, al] of C) {
+  const words = al.split(' '); const phrases = [];
+  const multi = { 'united states': 1, 'estados unidos': 1, 'reino unido': 1, 'united kingdom': 1, 'south africa': 1, 'africa do sul': 1, 'áfrica do sul': 1, 'saudi arabia': 1, 'arabia saudita': 1,
+    'new zealand': 1, 'nova zelandia': 1, 'nueva zelanda': 1, 'costa rica': 1, 'puerto rico': 1, 'porto rico': 1, 'el salvador': 1, 'republica dominicana': 1, 'cabo verde': 1, 'cape verde': 1, 'paises baixos': 1 };
+  for (const m of Object.keys(multi)) if (al.includes(m)) phrases.push(m);
+  for (const w of words) if (w.length >= 3 || ['us', 'uk', 'br'].includes(w)) phrases.push(w);
+  for (const p of phrases) ALIAS.push([norm(p), iso]);
+}
+ALIAS.sort((a, b) => b[0].length - a[0].length);
+const SHORT = new Set(['us', 'uk', 'br']);
+function detectCountry(text) {
+  const raw = String(text || '');
+  const fm = raw.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+  if (fm) { const cps = [...fm[0]].map(c => String.fromCharCode(c.codePointAt(0) - 0x1F1E6 + 65)).join(''); if (BY.has(cps)) return cps; }
+  const t = ' ' + norm(raw).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  for (const [a, iso] of ALIAS) {
+    if (SHORT.has(a)) { if (t.trim() === a) return iso; continue; }
+    if (t.includes(' ' + a + ' ')) return iso;
+  }
+  return null;
+}
+
+// ================= state =================
+const DIST = 200, LANES = 8, LANE_W = 1.35;
+const G = { race: 0, phase: 'setup', phaseT: 0, time: 0, racers: [], users: new Map(), feed: [], spot: null, winner: null, wins: new Map(), shake: 0, hype: 0, lastLeader: null, demo: false, started: false };
+const SH = { G: { phase: 'intro', round: 0, fury: 0, crowdHype: 0, spot: null, feed: [], hearts: [], shake: 0, started: false, time: 0 }, F: [{ comboN: 0 }, { comboN: 0 }], cfg: { voice: false } };
+window.__ringue = SH; // drives the shared soundtrack/SFX module (fx.js)
+
+// ================= three.js scene =================
+const gl = $('gl'), hud = $('hud'), hx = hud.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ canvas: gl, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x05040c); scene.fog = new THREE.Fog(0x05040c, 22, 70);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.75, 0.5, 0.82); composer.addPass(bloom); composer.addPass(new OutputPass());
+scene.add(new THREE.HemisphereLight(0x8fb8ff, 0x1a0f2a, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(4, 10, 6); scene.add(sun); scene.add(sun.target);
+
+const TW = LANES * LANE_W;
+// track surface (scrolling grid texture)
+function gridTex() {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256; const x = cv.getContext('2d');
+  x.fillStyle = '#0d0b1c'; x.fillRect(0, 0, 256, 256);
+  x.strokeStyle = 'rgba(120,110,255,.22)'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 0); x.lineTo(256, 0); x.stroke();
+  x.strokeStyle = 'rgba(120,110,255,.08)'; x.beginPath(); x.moveTo(0, 128); x.lineTo(256, 128); x.stroke();
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, (DIST + 60) / 4); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+const track = new THREE.Mesh(new THREE.PlaneGeometry(TW + 0.6, DIST + 60), new THREE.MeshStandardMaterial({ map: gridTex(), roughness: 0.55, metalness: 0.3 }));
+track.rotation.x = -Math.PI / 2; track.position.z = -(DIST + 60) / 2 + 20; scene.add(track);
+// lane lines
+const laneMat = new THREE.MeshBasicMaterial({ color: 0x6f62ff, transparent: true, opacity: 0.35 });
+for (let i = 1; i < LANES; i++) { const l = new THREE.Mesh(new THREE.PlaneGeometry(0.03, DIST + 60), laneMat); l.rotation.x = -Math.PI / 2; l.position.set(-TW / 2 + i * LANE_W, 0.005, track.position.z); scene.add(l); }
+// neon rails
+const railMats = [new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3df5ff).multiplyScalar(2.2) }), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff2d95).multiplyScalar(2.2) })];
+for (const s of [-1, 1]) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, DIST + 60), railMats[s < 0 ? 0 : 1]); r.position.set(s * (TW / 2 + 0.35), 0.18, track.position.z); scene.add(r);
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(DIST + 60, 1.6), new THREE.MeshBasicMaterial({ color: s < 0 ? 0x08303a : 0x3a0828, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  wall.rotation.y = Math.PI / 2; wall.position.set(s * (TW / 2 + 0.4), 0.8, track.position.z); scene.add(wall); }
+// distance gates every 25 m
+function textTex(lines, w = 512, h = 128, bg = null, col = '#fff') {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d');
+  if (bg) { x.fillStyle = bg; x.fillRect(0, 0, w, h); }
+  x.fillStyle = col; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `700 ${Math.round(h * 0.8)}px Teko, Impact, sans-serif`; x.fillText(lines, w / 2, h * 0.55);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const gates = [];
+for (let d = 25; d < DIST; d += 25) {
+  const g = new THREE.Group(); g.position.z = -d;
+  const col = d % 50 === 0 ? 0x3df5ff : 0xb9a8ff;
+  const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.8) });
+  const arc = new THREE.Mesh(new THREE.TorusGeometry(TW / 2 + 0.6, 0.06, 8, 48, Math.PI), m); g.add(arc);
+  const lbl = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: textTex(d + ' M'), transparent: true, depthWrite: false }));
+  lbl.position.y = TW / 2 + 1.1; g.add(lbl); scene.add(g); gates.push(g);
+}
+// finish line
+const checker = (() => { const cv = document.createElement('canvas'); cv.width = 256; cv.height = 32; const x = cv.getContext('2d');
+  for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#111' : '#fff'; x.fillRect(i * 16, j * 16, 16, 16); }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const finish = new THREE.Group(); finish.position.z = -DIST; scene.add(finish);
+{ const fl = new THREE.Mesh(new THREE.PlaneGeometry(TW, 1), new THREE.MeshBasicMaterial({ map: checker })); fl.rotation.x = -Math.PI / 2; fl.position.y = 0.01; finish.add(fl);
+  const pm = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.3 });
+  for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.2, 12), pm); p.position.set(s * (TW / 2 + 0.5), 2.1, 0); finish.add(p); }
+  const ban = new THREE.Mesh(new THREE.PlaneGeometry(TW + 1.2, 1.1), new THREE.MeshBasicMaterial({ map: textTex('🏁 FINISH 🏁', 1024, 128, '#111', '#ffe08a'), side: THREE.DoubleSide }));
+  ban.position.y = 4.1; finish.add(ban); }
+// starfield
+{ const n = 900, p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { p[i * 3] = rand(-60, 60); p[i * 3 + 1] = rand(4, 50); p[i * 3 + 2] = rand(-DIST - 60, 30); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9fa8ff, size: 0.18, transparent: true, opacity: 0.8, depthWrite: false }))); }
+// side city blocks (neon towers) for depth
+{ const geo = new THREE.BoxGeometry(1, 1, 1); const mats = [0x1b1640, 0x101a3a, 0x24102e].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, emissive: c, emissiveIntensity: 0.3 }));
+  const winM = [0x3df5ff, 0xff2d95, 0xffc83d].map(c => new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(1.6) }));
+  for (let z = 10; z > -DIST - 50; z -= 6) for (const s of [-1, 1]) {
+    const h = rand(2, 14), w = rand(1.5, 3.5), b = new THREE.Mesh(geo, mats[Math.floor(Math.random() * 3)]);
+    b.scale.set(w, h, rand(2, 5)); b.position.set(s * (TW / 2 + 3 + w / 2 + rand(0, 4)), h / 2 - 0.2, z + rand(-2, 2)); scene.add(b);
+    const strip = new THREE.Mesh(geo, winM[Math.floor(Math.random() * 3)]); strip.scale.set(0.06, h * 0.8, 0.06); strip.position.set(b.position.x - s * w / 2, h * 0.45, b.position.z); scene.add(strip);
+  } }
+
+// confetti
+const CN = 500, conf = []; const confM = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.09, 0.05), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }), CN);
+confM.frustumCulled = false; confM.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(confM);
+const CC = [0xff2d55, 0xffc83d, 0x3df5ff, 0xb9a8ff, 0x7dff9a, 0xffffff];
+for (let i = 0; i < CN; i++) { conf.push({ on: false, p: new THREE.Vector3(), v: new THREE.Vector3(), r: new THREE.Euler(), w: new THREE.Vector3(), life: 0 }); confM.setColorAt(i, new THREE.Color(CC[i % CC.length]).multiplyScalar(1.4)); }
+let cHead = 0;
+function confetti(x, y, z, n, up = 7) { for (let k = 0; k < n; k++) { const c = conf[cHead]; cHead = (cHead + 1) % CN; c.on = true; c.life = rand(2.5, 4); c.p.set(x + rand(-0.3, 0.3), y, z); c.v.set(rand(-3, 3), rand(up * 0.6, up), rand(-2, 2)); c.r.set(rand(0, 6), rand(0, 6), 0); c.w.set(rand(-9, 9), rand(-9, 9), rand(-9, 9)); } }
+// boost trail particles
+const TN = 400, trail = []; const trailGeo = new THREE.BufferGeometry(); const tPos = new Float32Array(TN * 3), tCol = new Float32Array(TN * 3);
+trailGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3)); trailGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3));
+const glowTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d'); const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.4, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
+scene.add(new THREE.Points(trailGeo, new THREE.PointsMaterial({ size: 0.5, map: glowTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+for (let i = 0; i < TN; i++) { trail.push({ life: 0, x: 0, y: -99, z: 0, vx: 0, vy: 0, vz: 0, c: new THREE.Color() }); }
+let tHead = 0;
+function emitTrail(x, y, z, color, n) { for (let k = 0; k < n; k++) { const p = trail[tHead]; tHead = (tHead + 1) % TN; p.life = rand(0.3, 0.6); p.max = p.life; p.x = x + rand(-0.25, 0.25); p.y = y + rand(-0.2, 0.2); p.z = z + rand(0, 0.3); p.vx = rand(-0.5, 0.5); p.vy = rand(0.2, 1.2); p.vz = rand(1, 3); p.c.set(color); } }
+
+// ================= racers =================
+const COLORS = ['#3df5ff', '#ffc83d', '#ff2d95', '#7dff9a', '#b9a8ff', '#ff7a1f', '#ff2d55', '#4d9bff'];
+function flagTexture(flag) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256; const x = cv.getContext('2d');
+  x.fillStyle = '#f4f4f8'; x.fillRect(0, 0, 512, 256);
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '118px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) x.fillText(flag, 64 + i * 128, 66 + j * 128);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const ballGeo = new THREE.SphereGeometry(0.5, 40, 24), ringGeo = new THREE.TorusGeometry(0.62, 0.05, 8, 40);
+function laneX(i) { return -TW / 2 + LANE_W / 2 + i * LANE_W; }
+function freeLane() { for (let i of [3, 4, 2, 5, 1, 6, 0, 7]) if (!G.racers.some(r => r.lane === i)) return i; return -1; }
+function addRacer(iso) {
+  let lane = freeLane();
+  if (lane < 0) {
+    // replace the quietest racer that has been inactive for a while
+    const cand = G.racers.filter(r => G.time - r.lastAct > 15).sort((a, b) => a.lastAct - b.lastAct)[0];
+    if (!cand) return null;
+    removeRacer(cand); lane = cand.lane;
+  }
+  const c = BY.get(iso), color = COLORS[lane % COLORS.length];
+  const grp = new THREE.Group();
+  const ball = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ map: flagTexture(c.flag), roughness: 0.35, metalness: 0.1, emissive: 0xffffff, emissiveIntensity: 0.06 }));
+  ball.position.y = 0.5; grp.add(ball);
+  const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(2) })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; grp.add(ring);
+  const lead = Math.max(0, ...G.racers.map(r => r.d));
+  const r = { iso, c, lane, color, grp, ball, ring, d: G.phase === 'race' ? Math.max(0, lead * 0.35) : 0, pend: 0, boostT: 0, lastAct: G.time, fans: new Map(), last: null, joinT: G.time, wob: rand(0, 6), spd: rand(0.92, 1.08) };
+  grp.position.set(laneX(lane), 0, -r.d); scene.add(grp); G.racers.push(r);
+  return r;
+}
+function removeRacer(r) { scene.remove(r.grp); r.ball.material.map.dispose(); r.ball.material.dispose(); G.racers.splice(G.racers.indexOf(r), 1); }
+const racerOf = (iso) => G.racers.find(r => r.iso === iso);
+
+// ================= avatars =================
+const AV = new Map();
+function loadImg(url) {
+  if (!url) return null; let a = AV.get(url);
+  if (!a) { a = { img: new Image(), ok: false }; a.img.decoding = 'async'; a.img.onload = () => { a.ok = true; }; a.img.src = '/img?u=' + encodeURIComponent(url); AV.set(url, a); if (AV.size > 200) AV.delete(AV.keys().next().value); }
+  return a;
+}
+function userOf(e) { return { uid: e.uid || e.nick || '?', nick: e.nick || e.uid || '?', pic: e.pic || '' }; }
+
+// ================= game logic =================
+function feed(o) { G.feed.unshift({ t: 0, ...o }); if (G.feed.length > 4) G.feed.length = 4; SH.G.feed = G.feed; }
+function credit(r, u, amt) { const f = r.fans.get(u.uid) || { u, pts: 0 }; f.pts += amt; f.u = u.pic ? u : f.u; r.fans.set(u.uid, f); r.last = u; r.lastT = G.time; r.lastAct = G.time; }
+function push(r, amt, u, boost) {
+  if (!r || G.phase !== 'race') return;
+  r.pend += amt; if (boost) r.boostT = Math.max(r.boostT, Math.min(3, 0.6 + amt / 15));
+  if (u) credit(r, u, amt);
+  G.hype = Math.min(1, G.hype + amt * 0.01);
+}
+function joinUser(u, iso, quiet) {
+  const prev = G.users.get(u.uid); G.users.set(u.uid, { iso, u });
+  let r = racerOf(iso), isNew = false;
+  if (!r) { r = addRacer(iso); isNew = !!r; }
+  if (!r) { if (!quiet) feed({ u, text: `wants ${BY.get(iso).flag} ${BY.get(iso).name} · track full`, color: '#9a94b8' }); return null; }
+  if (!prev || prev.iso !== iso) feed({ u, text: isNew ? `brought ${r.c.flag} ${r.c.name.toUpperCase()} into the race!` : `joined team ${r.c.flag} ${r.c.name}`, color: r.color, big: isNew });
+  return r;
+}
+const lastCmt = new Map();
+function onChat(e) {
+  const u = userOf(e), iso = detectCountry(e.comment);
+  let r = null;
+  if (iso) r = joinUser(u, iso);
+  else { const m = G.users.get(u.uid); if (m) r = racerOf(m.iso) || joinUser(u, m.iso, true); }
+  if (!r) return;
+  const now = G.time; if (now - (lastCmt.get(u.uid) || -9) < 1.2) return; lastCmt.set(u.uid, now);
+  push(r, 1.2, u, false); r.cheer = 1;
+}
+function onLike(e) {
+  const u = userOf(e), m = G.users.get(u.uid); if (!m) return;
+  const r = racerOf(m.iso); if (!r) return;
+  push(r, Math.min(3, 0.05 * Math.max(1, e.count | 0)), u, false);
+  SH.G.hearts.push(1); if (SH.G.hearts.length > 50) SH.G.hearts.length = 0;
+}
+function underdog() { const rs = [...G.racers].sort((a, b) => a.d - b.d); return rs[0] || null; }
+function onGift(e) {
+  const u = userOf(e), count = Math.max(1, e.count | 0), per = Math.max(1, e.diamonds | 0), total = per * count;
+  const m = G.users.get(u.uid); let r = m ? (racerOf(m.iso) || joinUser(u, m.iso, true)) : null, pick = false;
+  if (!r) { r = underdog(); pick = true; }
+  if (!r) return;
+  const amt = Math.min(95, 3.5 * Math.sqrt(total) + 1.5);
+  push(r, amt, u, true);
+  const mega = total >= 30;
+  feed({ u, gift: e.giftName, giftPic: e.giftPic, count, text: `${r.c.flag} ${mega ? 'MEGA BOOST' : 'TURBO'} +${Math.round(amt)}m${pick ? ' (underdog!)' : ''}`, color: r.color, big: true });
+  if (mega) { G.spot = { u, r, t: 0, dur: 2.6, label: `${r.c.flag} ${r.c.name.toUpperCase()} MEGA BOOST!` }; SH.G.spot = G.spot; G.shake = 0.25; confetti(r.grp.position.x, 1, r.grp.position.z, 80, 6); }
+}
+function onFollow(e) { const u = userOf(e), m = G.users.get(u.uid); const r = m && racerOf(m.iso); if (r) push(r, 3, u, true); feed({ u, text: r ? `followed · ${r.c.flag} +3m` : 'followed! comment your country 🌎', color: '#7dff9a' }); }
+function onShare(e) { const u = userOf(e), m = G.users.get(u.uid); const r = m && racerOf(m.iso); if (r) push(r, 4, u, true); feed({ u, text: r ? `shared · ${r.c.flag} +4m` : 'shared the live!', color: '#3df5ff' }); }
+function onJoin(e) { /* quiet */ }
+
+function seedRacers() { for (const iso of ['BR', 'US', 'MX', 'PT']) if (!racerOf(iso)) addRacer(iso); }
+function startRace() {
+  G.race++; G.phase = 'count'; G.phaseT = 0; G.winner = null; G.spot = null;
+  for (const r of [...G.racers]) { if (G.time - r.lastAct > 120 && G.racers.length > 4) removeRacer(r); }
+  seedRacers();
+  for (const r of G.racers) { r.d = 0; r.pend = 0; r.boostT = 0; r.fans = new Map(); r.last = null; r.grp.position.z = 0; }
+  SH.G.round = G.race; SH.G.phase = 'intro';
+}
+function finishRace(r) {
+  G.phase = 'win'; G.phaseT = 0; G.winner = r; G.spot = null; SH.G.spot = null; G.wins.set(r.iso, (G.wins.get(r.iso) || 0) + 1);
+  let mvp = null; for (const f of r.fans.values()) if (!mvp || f.pts > mvp.pts) mvp = f; G.mvp = mvp;
+  confetti(r.grp.position.x, 1, r.grp.position.z, 240, 9); confetti(-TW / 2, 4, -DIST, 120, 6); confetti(TW / 2, 4, -DIST, 120, 6);
+  G.shake = 0.35; SH.G.phase = 'ko';
+}
+
+// ================= layout =================
+let W = 390, H = 844, DPR = 1, u = 1;
+function layout() {
+  W = window.innerWidth; H = window.innerHeight; DPR = Math.min(2, window.devicePixelRatio || 1); u = Math.min(W / 390, H / 760);
+  renderer.setSize(W, H, false); composer.setSize(W, H);
+  hud.width = Math.round(W * DPR); hud.height = Math.round(H * DPR);
+  camera.aspect = W / H; camera.fov = W / H < 0.7 ? 62 : 50; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', layout); layout();
+
+// ================= HUD drawing =================
+function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
+function txt(s, X, Y, size, col, align = 'left', font = 'teko', maxW) {
+  hx.font = font === 'teko' ? `700 ${size}px Teko, Impact, sans-serif` : font === 'emoji' ? `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif` : `800 ${size}px Inter, system-ui, sans-serif`;
+  hx.textAlign = align; hx.textBaseline = 'middle'; hx.fillStyle = col;
+  if (maxW) { const w = hx.measureText(s).width; if (w > maxW) { hx.save(); const sc = maxW / w; const ox = align === 'center' ? X : align === 'right' ? X : X; hx.translate(ox, Y); hx.scale(sc, 1); hx.fillText(s, 0, 0); hx.restore(); return; } }
+  hx.fillText(s, X, Y);
+}
+function avatar(X, Y, R, user, col) {
+  hx.save(); hx.beginPath(); hx.arc(X, Y, R + 2, 0, Math.PI * 2); hx.fillStyle = col; hx.fill();
+  hx.beginPath(); hx.arc(X, Y, R, 0, Math.PI * 2); hx.clip();
+  const a = user && loadImg(user.pic);
+  if (a && a.ok) hx.drawImage(a.img, X - R, Y - R, R * 2, R * 2);
+  else { hx.fillStyle = '#231d3a'; hx.fillRect(X - R, Y - R, R * 2, R * 2); txt(String((user && user.nick) || '?').replace(/^@/, '').charAt(0).toUpperCase(), X, Y + 1, R * 1.1, '#fff', 'center', 'inter'); }
+  hx.restore();
+}
+const proj = new THREE.Vector3();
+function toScreen(v) { proj.copy(v).project(camera); return [(proj.x + 1) / 2 * W, (1 - proj.y) / 2 * H, proj.z]; }
+const TIPS = [['COMMENT YOUR COUNTRY', 'TO JOIN THE RACE 🌎', '#3df5ff'], ['EVERY COMMENT', 'PUSHES YOUR FLAG ➜', '#7dff9a'], ['🌹 ROSE = TURBO', 'BIG GIFTS = MEGA BOOST 🚀', '#ff2d95'], ['❤️ TAP TAP LIKES', 'HELP YOUR COUNTRY', '#ffc83d'], ['TYPE: BRAZIL · USA · MEXICO', 'OR SEND YOUR FLAG 🇧🇷🇺🇸🇲🇽', '#b9a8ff']];
+function drawHUD(dt) {
+  hx.setTransform(DPR, 0, 0, DPR, 0, 0); hx.clearRect(0, 0, W, H);
+  const sorted = [...G.racers].sort((a, b) => b.d - a.d);
+  // ---- title
+  const ty = 46 * u;
+  hx.save(); hx.shadowColor = '#3df5ff'; hx.shadowBlur = 16 * u; txt('🏁 COUNTRY RACE', W / 2, ty, 40 * u, '#fff', 'center'); hx.restore();
+  txt(`RACE #${Math.max(1, G.race)} · ${G.racers.length} COUNTRIES · ${G.users.size} PLAYERS`, W / 2, ty + 25 * u, 12 * u, '#b9a8ff', 'center', 'inter');
+  // ---- mini map
+  const mx = 22 * u, mw = W - 44 * u, my = ty + 52 * u;
+  rr(hx, mx, my - 5 * u, mw, 10 * u, 5 * u); hx.fillStyle = 'rgba(255,255,255,.12)'; hx.fill();
+  const lead = sorted[0];
+  if (lead) { rr(hx, mx, my - 5 * u, Math.max(10 * u, mw * clamp(lead.d / DIST, 0, 1)), 10 * u, 5 * u); const g = hx.createLinearGradient(mx, 0, mx + mw, 0); g.addColorStop(0, '#3df5ff'); g.addColorStop(1, '#ff2d95'); hx.fillStyle = g; hx.fill(); }
+  txt('🏁', mx + mw + 2 * u, my, 16 * u, '#fff', 'center', 'emoji');
+  for (const r of [...sorted].reverse()) { const px = mx + mw * clamp(r.d / DIST, 0, 1); hx.beginPath(); hx.arc(px, my, 11 * u, 0, Math.PI * 2); hx.fillStyle = 'rgba(8,6,16,.9)'; hx.fill(); hx.strokeStyle = r.color; hx.lineWidth = 2 * u; hx.stroke(); txt(r.c.flag, px, my + 1 * u, 13 * u, '#fff', 'center', 'emoji'); }
+  // ---- leaderboard (right)
+  const lx = W - 10 * u, lw = 158 * u; let ly = my + 30 * u;
+  for (let i = 0; i < Math.min(8, sorted.length); i++) {
+    const r = sorted[i], h = 27 * u;
+    rr(hx, lx - lw, ly, lw, h - 3 * u, 8 * u); hx.fillStyle = i === 0 ? 'rgba(255,200,61,.22)' : 'rgba(8,6,16,.62)'; hx.fill();
+    hx.fillStyle = r.color; hx.fillRect(lx - lw, ly + 4 * u, 3 * u, h - 11 * u);
+    txt(String(i + 1), lx - lw + 13 * u, ly + h / 2, 17 * u, i === 0 ? '#ffc83d' : '#fff', 'center');
+    txt(r.c.flag, lx - lw + 34 * u, ly + h / 2 - 1 * u, 16 * u, '#fff', 'center', 'emoji');
+    const w = G.wins.get(r.iso);
+    txt(r.c.name.toUpperCase(), lx - lw + 48 * u, ly + h / 2 + 1 * u, 16 * u, '#fff', 'left', 'teko', w ? 44 * u : 58 * u);
+    txt(Math.floor(r.d) + 'm', lx - 6 * u, ly + h / 2 + 1 * u, 15 * u, '#cfe9ff', 'right');
+    if (w) txt('🏆' + w, lx - 47 * u, ly + h / 2, 10 * u, '#ffc83d', 'right', 'inter');
+    ly += h;
+  }
+  // ---- feed (left)
+  let fy = my + 30 * u; const fw = Math.min(205 * u, W - lw - 36 * u);
+  for (const e of G.feed) {
+    e.t += dt; const a = clamp(1 - (e.t - 5) / 0.6, 0, 1) * clamp(e.t / 0.15, 0, 1); if (a <= 0) continue;
+    const h = (e.big ? 44 : 36) * u, x0 = 12 * u - (1 - easeOut(clamp(e.t / 0.25, 0, 1))) * 40 * u;
+    hx.globalAlpha = a * (G.phase === 'win' ? 0.25 : 1); rr(hx, x0, fy, fw, h, h / 2); hx.fillStyle = 'rgba(8,6,16,.78)'; hx.fill(); hx.strokeStyle = e.color; hx.lineWidth = 1.5 * u; hx.stroke();
+    avatar(x0 + h / 2, fy + h / 2, h / 2 - 5 * u, e.u, e.color);
+    txt('@' + String(e.u.nick).slice(0, 18), x0 + h + 2 * u, fy + h * 0.33, 11 * u, '#fff', 'left', 'inter', fw - h - 40 * u);
+    txt(e.text, x0 + h + 2 * u, fy + h * 0.7, 11 * u, e.color, 'left', 'inter', fw - h - 12 * u);
+    if (e.giftPic) { const gi = loadImg(e.giftPic); if (gi && gi.ok) hx.drawImage(gi.img, x0 + fw - 30 * u, fy + h / 2 - 13 * u, 26 * u, 26 * u); if (e.count > 1) txt('x' + e.count, x0 + fw - 34 * u, fy + h / 2, 14 * u, '#fff', 'right'); }
+    hx.globalAlpha = 1; fy += h + 5 * u;
+  }
+  // ---- labels over racers
+  for (const r of G.racers) {
+    const v = new THREE.Vector3(r.grp.position.x, 1.45, r.grp.position.z); const [sx, sy, sz] = toScreen(v); if (sz > 1 || sy < my + 20 * u) continue;
+    const k = clamp(1.25 - (-r.grp.position.z - camZ0) / 40, 0.55, 0.95);
+    hx.globalAlpha = 0.95; rr(hx, sx - 27 * k * u, sy - 10 * k * u, 54 * k * u, 19 * k * u, 9 * k * u); hx.fillStyle = 'rgba(8,6,16,.75)'; hx.fill(); hx.strokeStyle = r.color; hx.lineWidth = 1.5 * u; hx.stroke();
+    txt(r.c.name.toUpperCase(), sx, sy + 1 * u, 14 * k * u, '#fff', 'center', 'teko', 48 * k * u);
+    if (r.last && G.time - r.lastT < 4) avatar(sx, sy - 26 * k * u, 13 * k * u, r.last, r.color);
+    hx.globalAlpha = 1;
+  }
+  // ---- tips card
+  if (G.phase === 'race' || G.phase === 'count') {
+    const tip = TIPS[Math.floor(G.time / 3.6) % TIPS.length], cy = H * 0.8, ph = (G.time % 3.6) / 3.6;
+    const sc = 1 + Math.sin(G.time * 6) * 0.02, pop = easeOut(clamp(ph * 8, 0, 1));
+    hx.save(); hx.translate(W / 2, cy); hx.scale(sc * (0.6 + 0.4 * pop), sc * (0.6 + 0.4 * pop)); hx.globalAlpha = pop;
+    const cw = Math.min(W - 30 * u, 360 * u), ch = 70 * u;
+    rr(hx, -cw / 2, -ch / 2, cw, ch, 16 * u); hx.fillStyle = 'rgba(6,4,12,.84)'; hx.fill(); hx.shadowColor = tip[2]; hx.shadowBlur = 18 * u; hx.strokeStyle = tip[2]; hx.lineWidth = 2.5 * u; hx.stroke(); hx.shadowBlur = 0;
+    txt(tip[0], 0, -13 * u, 22 * u, '#fff', 'center', 'teko', cw - 24 * u); txt(tip[1], 0, 15 * u, 30 * u, tip[2], 'center', 'teko', cw - 24 * u);
+    hx.restore();
+  }
+  // ---- countdown
+  if (G.phase === 'count') {
+    const n = 3 - Math.floor(G.phaseT); const f = G.phaseT % 1;
+    hx.save(); hx.translate(W / 2, H * 0.42); hx.scale(1.6 - f * 0.6, 1.6 - f * 0.6); hx.globalAlpha = 1 - f * 0.6; hx.shadowColor = '#3df5ff'; hx.shadowBlur = 30 * u;
+    txt(n > 0 ? String(n) : 'GO!', 0, 0, 110 * u, n > 0 ? '#fff' : '#7dff9a', 'center'); hx.restore();
+  }
+  // ---- spotlight (mega boost)
+  if (G.spot) {
+    const s = G.spot; s.t += dt; if (s.t > s.dur) { G.spot = null; SH.G.spot = null; }
+    else { const a = clamp(s.t / 0.2, 0, 1) * clamp((s.dur - s.t) / 0.3, 0, 1), y = H * 0.4;
+      hx.globalAlpha = a; hx.fillStyle = 'rgba(0,0,0,.45)'; hx.fillRect(0, y - 70 * u, W, 140 * u);
+      avatar(W / 2, y - 18 * u, 38 * u, s.u, s.r.color);
+      txt('@' + s.u.nick, W / 2, y + 34 * u, 15 * u, '#fff', 'center', 'inter', W - 40 * u);
+      txt(s.label, W / 2, y + 58 * u, 28 * u, s.r.color, 'center', 'teko', W - 30 * u); hx.globalAlpha = 1; }
+  }
+  // ---- winner
+  if (G.phase === 'win' && G.winner) {
+    const r = G.winner, t = G.phaseT, a = clamp(t / 0.3, 0, 1), y = H * 0.36, sc = 0.7 + 0.3 * easeOut(clamp(t / 0.5, 0, 1));
+    hx.globalAlpha = a; hx.fillStyle = 'rgba(0,0,0,.55)'; hx.fillRect(0, y - 110 * u, W, 250 * u);
+    hx.save(); hx.translate(W / 2, y); hx.scale(sc, sc);
+    txt(r.c.flag, 0, -50 * u, 84 * u, '#fff', 'center', 'emoji');
+    hx.shadowColor = r.color; hx.shadowBlur = 24 * u; txt(r.c.name.toUpperCase() + ' WINS!', 0, 30 * u, 62 * u, '#fff', 'center', 'teko', W - 30 * u); hx.restore();
+    if (G.mvp) { avatar(W / 2 - 70 * u, y + 82 * u, 18 * u, G.mvp.u, r.color); txt('TOP FAN @' + String(G.mvp.u.nick).slice(0, 16), W / 2 - 46 * u, y + 82 * u, 14 * u, '#ffe08a', 'left', 'inter', 200 * u); }
+    txt(`NEXT RACE IN ${Math.max(0, Math.ceil(8 - t))}… COMMENT YOUR COUNTRY!`, W / 2, y + 118 * u, 13 * u, '#b9a8ff', 'center', 'inter', W - 30 * u);
+    hx.globalAlpha = 1;
+  }
+}
+
+// ================= main loop =================
+let last = performance.now(), camZ0 = 0;
+const camPos = new THREE.Vector3(0, 6, 8), camLook = new THREE.Vector3(0, 0, -6);
+const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), S3 = new THREE.Vector3();
+function tick() {
+  requestAnimationFrame(tick);
+  const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
+  G.time += dt; G.phaseT += dt; SH.G.time = G.time;
+  if (G.phase === 'count' && G.phaseT > 3.6) { G.phase = 'race'; G.phaseT = 0; SH.G.phase = 'fight'; }
+  if (G.phase === 'win' && G.phaseT > 8.5) startRace();
+  if (G.demo && G.started) demoTick(dt);
+  // racers
+  for (const r of G.racers) {
+    if (G.phase === 'race') {
+      const base = 0.95 * r.spd * (1 + 0.15 * Math.sin(G.time * 0.7 + r.wob));
+      const take = Math.min(r.pend, (r.boostT > 0 ? 26 : 9) * dt); r.pend -= take;
+      r.d += base * dt + take;
+      if (r.d >= DIST && G.phase === 'race') { r.d = DIST; finishRace(r); }
+    }
+    r.boostT = Math.max(0, r.boostT - dt); r.cheer = Math.max(0, (r.cheer || 0) - dt * 3);
+    const z = -r.d, dz = z - r.grp.position.z; r.grp.position.z = z;
+    r.ball.rotation.x += dz / 0.5;
+    r.ball.position.y = 0.5 + Math.abs(Math.sin(G.time * 9 + r.wob)) * (r.boostT > 0 ? 0.12 : 0.03) + r.cheer * 0.25;
+    r.ring.scale.setScalar(1 + (r.boostT > 0 ? 0.25 + Math.sin(G.time * 30) * 0.1 : 0));
+    if (r.boostT > 0) emitTrail(r.grp.position.x, 0.5, r.grp.position.z + 0.4, r.color, 3);
+    if (G.phase === 'win' && G.winner === r) r.ball.position.y = 0.5 + Math.abs(Math.sin(G.time * 6)) * 0.9;
+  }
+  // camera framing: follow the pack
+  const ds = G.racers.map(r => r.d); const L = ds.length ? Math.max(...ds) : 0, Mn = ds.length ? Math.max(Math.min(...ds), L - 26) : 0, span = L - Mn;
+  const tz = -Mn + 6.2 + span * 0.05, ty = 4.6 + span * 0.3, lz = -(L + Mn) / 2 - 3.2 - span * 0.1;
+  camPos.x = Math.sin(G.time * 0.2) * 0.8; camPos.y = lerp(camPos.y, ty, dt * 2); camPos.z = lerp(camPos.z, tz, dt * 2.5); camLook.z = lerp(camLook.z, lz, dt * 2.5);
+  camera.position.set(camPos.x + rand(-1, 1) * G.shake, camPos.y + rand(-1, 1) * G.shake, camPos.z); camera.lookAt(0, 0, camLook.z); camZ0 = -camPos.z;
+  sun.position.set(4, 10, camPos.z + 6); sun.target.position.set(0, 0, camLook.z);
+  G.shake = Math.max(0, G.shake - dt * 0.8); G.hype = Math.max(0, G.hype - dt * 0.05); SH.G.crowdHype = G.hype; SH.G.shake = G.shake;
+  track.material.map.offset.y = 0;
+  gates.forEach((g, i) => { g.children[0].material.color.setHSL(((G.time * 0.1 + i * 0.1) % 1), 1, 0.6).multiplyScalar(1.6); });
+  // trails
+  for (let i = 0; i < TN; i++) { const p = trail[i]; if (p.life > 0) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; const k = Math.max(0, p.life / p.max); tPos[i * 3] = p.x; tPos[i * 3 + 1] = p.y; tPos[i * 3 + 2] = p.z; tCol[i * 3] = p.c.r * k; tCol[i * 3 + 1] = p.c.g * k; tCol[i * 3 + 2] = p.c.b * k; } else tPos[i * 3 + 1] = -99; }
+  trailGeo.attributes.position.needsUpdate = true; trailGeo.attributes.color.needsUpdate = true;
+  // confetti
+  for (let i = 0; i < CN; i++) { const c = conf[i]; if (!c.on) { M4.makeScale(0, 0, 0); confM.setMatrixAt(i, M4); continue; }
+    c.life -= dt; if (c.life <= 0) { c.on = false; continue; } c.v.y -= 7 * dt; c.v.multiplyScalar(1 - Math.min(0.9, dt * 1.5)); if (c.v.y < -1.2) c.v.y = -1.2;
+    c.p.addScaledVector(c.v, dt); c.r.x += c.w.x * dt; c.r.y += c.w.y * dt; c.r.z += c.w.z * dt; Q.setFromEuler(c.r); S3.setScalar(Math.min(1, c.life * 2)); M4.compose(c.p, Q, S3); confM.setMatrixAt(i, M4); }
+  confM.instanceMatrix.needsUpdate = true;
+  composer.render();
+  drawHUD(dt);
+}
+
+// ================= demo =================
+const DEMO_U = ['ana_luz', 'pedrinho77', 'mari.gamer', 'joao_br', 'katy_fan', 'luis.mx', 'sofia', 'TheRealMike', 'bia_rosa', 'davi99', 'carlos_pt', 'yuki.jp', 'amara_ng', 'rafa_co'];
+const DEMO_C = ['Brasil 🇧🇷', 'USA!!', 'mexico', 'Portugal', 'colombia', '🇦🇷', 'peru', 'Japan', 'nigeria', 'philippines', 'España', 'go brazil', 'vamos mexico', 'India'];
+let demoAcc = 0;
+function demoTick(dt) {
+  demoAcc += dt; if (demoAcc < 0.45 || G.phase !== 'race') return; demoAcc = 0;
+  const nick = DEMO_U[Math.floor(Math.random() * DEMO_U.length)], r = Math.random();
+  if (r < 0.55) onChat({ uid: nick, nick, comment: Math.random() < 0.4 ? DEMO_C[Math.floor(Math.random() * DEMO_C.length)] : 'lets goooo' });
+  else if (r < 0.8) onLike({ uid: nick, nick, count: Math.ceil(rand(3, 30)) });
+  else if (r < 0.95) onGift({ uid: nick, nick, giftName: 'Rose', diamonds: 1, count: Math.random() < 0.3 ? Math.ceil(rand(2, 9)) : 1 });
+  else onGift({ uid: nick, nick, giftName: Math.random() < 0.7 ? 'Finger Heart' : 'Perfume', diamonds: Math.random() < 0.7 ? 5 : 30, count: 1 });
+}
+
+// ================= live connection + setup =================
+let ws = null, wsRetry = 0;
+const store = { get(k, d) { try { const v = localStorage.getItem('race.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('race.' + k, JSON.stringify(v)); } catch {} } };
+const cfg = { user: store.get('user', '') };
+$('user').value = cfg.user;
+function setStatus(m, c) { $('status').textContent = m; $('status').style.color = c || '#9a94b8'; }
+function connect() {
+  if (!cfg.user) return;
+  try { if (ws) { ws.onclose = null; ws.close(); } } catch {}
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?user=' + encodeURIComponent(cfg.user.replace(/^@/, ''));
+  try { ws = new WebSocket(url); } catch { setStatus('Could not reach the server.', '#ff6b6b'); return; }
+  ws.onopen = () => { wsRetry = 0; };
+  ws.onmessage = (m) => {
+    let e; try { e = JSON.parse(m.data); } catch { return; }
+    if (e.type === 'status') setStatus(e.msg, e.state === 'connected' ? '#3ddc84' : '#ffd23d');
+    else if (e.type === 'gift') onGift(e); else if (e.type === 'like') onLike(e); else if (e.type === 'chat') onChat(e);
+    else if (e.type === 'follow') onFollow(e); else if (e.type === 'share') onShare(e); else if (e.type === 'join') onJoin(e);
+  };
+  ws.onclose = () => { setTimeout(connect, Math.min(15000, 1000 * Math.pow(2, wsRetry++))); };
+}
+function begin(demo) {
+  cfg.user = $('user').value.trim().replace(/^@/, ''); store.set('user', cfg.user);
+  if (!demo && !cfg.user) { setStatus('Type your TikTok @ first.', '#ff6b6b'); return; }
+  G.demo = demo; G.started = true; $('setup').classList.add('hidden');
+  if (!demo) connect();
+  if (G.race === 0) startRace();
+}
+$('go').onclick = () => begin(false);
+$('demo').onclick = () => begin(true);
+$('menu').onclick = () => $('setup').classList.remove('hidden');
+seedRacers();
+requestAnimationFrame(tick);
+window.__race = { G, onChat, onGift, onLike, onFollow, onShare, detectCountry, startRace };
+</script>
+<script type="module" src="/fx.js"></script>
+</body>
+</html>

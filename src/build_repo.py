@@ -12,5 +12,6 @@ assert "'/client.js')" in main
 out='/home/claude/ringue-gh'
 os.makedirs(out+'/src',exist_ok=True)
 open(out+'/index.ts','w').write(main)
-for f in ['game3d.html','fx.js','crowd.js','server.ts','build4.py','build_repo.py']: shutil.copy(f, out+'/src/'+f)
+shutil.copy('race.html', out+'/race.html')
+for f in ['race.html', 'game3d.html','fx.js','crowd.js','server.ts','build4.py','build_repo.py']: shutil.copy(f, out+'/src/'+f)
 print('index.ts', len(main))

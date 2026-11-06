@@ -1907,6 +1907,11 @@ Bun.serve<{ user: string; lastAsk: number }, {}>({
       if (server.upgrade(req, { data: { user, lastAsk: 0 } })) return;
       return new Response('upgrade failed', { status: 400 });
     }
+    if (url.pathname === '/race' || url.pathname === '/race.html') {
+      const f = Bun.file(import.meta.dir + '/race.html');
+      if (await f.exists()) return new Response(f, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' } });
+      return new Response('not found', { status: 404 });
+    }
     if (url.pathname === '/client.js') return new Response(CLIENT_JS, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-cache' } });
     if (url.pathname === '/crowd.js') return new Response(CROWD_JS, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-cache' } });
     if (url.pathname === '/fx.js') return new Response(FX_JS, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-cache' } });
