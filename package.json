@@ -1,0 +1,7 @@
+{
+  "name": "ringue",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "bun run index.ts" },
+  "dependencies": { "tiktok-live-connector": "2.5.0" }
+}
