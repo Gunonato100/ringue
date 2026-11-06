@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Country Race">
 <meta name="theme-color" content="#050409">
-<title>Country Race</title>
+<title>Live Race</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;700&family=Inter:wght@600;800&display=swap" rel="stylesheet">
@@ -49,10 +49,15 @@
 <button id="menu" title="Settings">⚙︎</button>
 <div id="setup">
   <div class="card">
-    <h1>COUNTRY RACE</h1>
-    <p class="sub">Viewers comment their country to join the race. Comments and likes push their flag, gifts give turbo boosts. Each race lasts about 2 to 4 minutes, then a new one starts automatically.</p>
+    <h1>LIVE RACE</h1>
+    <p class="sub">Viewers comment their state (or country) to join the race. Comments and likes push their flag, gifts give turbo boosts. Each race lasts about 2 to 4 minutes, then a new one starts automatically.</p>
     <label for="user">Your TikTok @</label>
     <input id="user" type="text" placeholder="automadesk" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label for="mode">Race mode</label>
+    <select id="mode" style="width:100%;box-sizing:border-box;background:#09080f;color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px;font-family:inherit">
+      <option value="states">🇺🇸 US States: comment your state (American audience)</option>
+      <option value="countries">🌎 Countries: comment your country (worldwide audience)</option>
+    </select>
     <label class="chk"><input id="music" type="checkbox" checked> Music and sound effects</label>
     <div class="btns"><button id="go">Start live</button><button id="demo">Demo</button></div>
     <div id="status"></div>
@@ -91,10 +96,37 @@ const C = [
   ['SA', 'Saudi Arabia', 'saudi arabia arabia saudita'], ['AE', 'UAE', 'uae emirados dubai emirates'], ['IL', 'Israel', 'israel'], ['IR', 'Iran', 'iran irã'],
   ['IQ', 'Iraq', 'iraq iraque irak'], ['DZ', 'Algeria', 'algeria argélia argelia'], ['AU', 'Australia', 'australia austrália'], ['NZ', 'New Zealand', 'new zealand nova zelandia nueva zelanda'],
 ];
+const ST = [
+  ['AL', 'Alabama', 'alabama bama birmingham'], ['AK', 'Alaska', 'alaska anchorage'], ['AZ', 'Arizona', 'arizona phoenix tucson'], ['AR', 'Arkansas', 'arkansas'],
+  ['CA', 'California', 'california cali socal norcal los angeles san diego san francisco bay area sacramento'], ['CO', 'Colorado', 'colorado denver'], ['CT', 'Connecticut', 'connecticut'],
+  ['DE', 'Delaware', 'delaware'], ['FL', 'Florida', 'florida miami orlando tampa jacksonville'], ['GA', 'Georgia', 'georgia atlanta'], ['HI', 'Hawaii', 'hawaii honolulu'],
+  ['ID', 'Idaho', 'idaho boise'], ['IL', 'Illinois', 'illinois chicago chi town'], ['IN', 'Indiana', 'indiana indianapolis'], ['IA', 'Iowa', 'iowa'], ['KS', 'Kansas', 'kansas wichita'],
+  ['KY', 'Kentucky', 'kentucky louisville'], ['LA', 'Louisiana', 'louisiana new orleans nola baton rouge'], ['ME', 'Maine', 'maine'], ['MD', 'Maryland', 'maryland baltimore'],
+  ['MA', 'Massachusetts', 'massachusetts mass boston'], ['MI', 'Michigan', 'michigan detroit'], ['MN', 'Minnesota', 'minnesota minneapolis'], ['MS', 'Mississippi', 'mississippi'],
+  ['MO', 'Missouri', 'missouri st louis kansas city'], ['MT', 'Montana', 'montana'], ['NE', 'Nebraska', 'nebraska omaha'], ['NV', 'Nevada', 'nevada vegas las vegas reno'],
+  ['NH', 'New Hampshire', 'new hampshire'], ['NJ', 'New Jersey', 'new jersey jersey'], ['NM', 'New Mexico', 'new mexico albuquerque'], ['NY', 'New York', 'new york nyc brooklyn bronx queens manhattan'],
+  ['NC', 'North Carolina', 'north carolina charlotte raleigh'], ['ND', 'North Dakota', 'north dakota'], ['OH', 'Ohio', 'ohio columbus cleveland cincinnati'], ['OK', 'Oklahoma', 'oklahoma okc tulsa'],
+  ['OR', 'Oregon', 'oregon portland'], ['PA', 'Pennsylvania', 'pennsylvania philly philadelphia pittsburgh'], ['RI', 'Rhode Island', 'rhode island'], ['SC', 'South Carolina', 'south carolina charleston'],
+  ['SD', 'South Dakota', 'south dakota'], ['TN', 'Tennessee', 'tennessee nashville memphis'], ['TX', 'Texas', 'texas houston dallas austin san antonio el paso'], ['UT', 'Utah', 'utah salt lake'],
+  ['VT', 'Vermont', 'vermont'], ['VA', 'Virginia', 'virginia richmond'], ['WA', 'Washington', 'washington seattle'], ['WV', 'West Virginia', 'west virginia'],
+  ['WI', 'Wisconsin', 'wisconsin milwaukee'], ['WY', 'Wyoming', 'wyoming'], ['DC', 'DC', 'dc washington dc'], ['PR', 'Puerto Rico', 'puerto rico pr'],
+];
+const SCOL = ['#3df5ff', '#ffc83d', '#ff2d95', '#7dff9a', '#b9a8ff', '#ff7a1f', '#ff2d55', '#4d9bff', '#00e0a4', '#ff5ad1'];
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const flagOf = (iso) => String.fromCodePoint(...[...iso].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
 const BY = new Map(); const ALIAS = [];
 for (const [iso, name] of C) BY.set(iso, { iso, name, flag: flagOf(iso) });
+ST.forEach(([ab, name], i) => BY.set('S-' + ab, { iso: 'S-' + ab, name, flag: '🇺🇸', abbr: ab, isState: true, col: SCOL[i % SCOL.length] }));
+const SALIAS = [];
+for (const [ab, name, al] of ST) {
+  const words = al.split(' '), ph = new Set([norm(name)]);
+  for (let i = 0; i < words.length; i++) { if (words[i].length >= 3 && !['bay', 'san', 'los', 'new', 'st', 'el', 'las', 'salt', 'city', 'town', 'area', 'north', 'south', 'west', 'rouge', 'baton'].includes(words[i])) ph.add(words[i]); if (i + 1 < words.length) ph.add(words[i] + ' ' + words[i + 1]); if (i + 2 < words.length) ph.add(words[i] + ' ' + words[i + 1] + ' ' + words[i + 2]); }
+  for (const p of ph) SALIAS.push([norm(p), 'S-' + ab]);
+}
+// multi-word real names must win over single words (e.g. "west virginia" over "virginia", "new mexico" over "mexico")
+SALIAS.sort((a, b) => b[0].length - a[0].length);
+const STATE_SET = new Set(ST.map(s => s[0].toLowerCase()));
+const SKIPW = new Set(['kansas city', 'washington dc']);
 // build aliases: phrases first (longest), then single words
 for (const [iso, name, al] of C) {
   const words = al.split(' '); const phrases = [];
@@ -106,6 +138,15 @@ for (const [iso, name, al] of C) {
 }
 ALIAS.sort((a, b) => b[0].length - a[0].length);
 const SHORT = new Set(['us', 'uk', 'br']);
+function detectState(text) {
+  const t = ' ' + norm(text).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ') + ' ', bare = t.trim();
+  if (bare.length === 2 && STATE_SET.has(bare) && !['in', 'or', 'me', 'ok', 'hi', 'la', 'pa', 'de', 'ma', 'id', 'oh', 'co'].includes(bare)) return 'S-' + bare.toUpperCase();
+  const m = String(text || '').match(/\b([A-Z]{2})\b/); if (m && STATE_SET.has(m[1].toLowerCase()) && !['IN', 'OR', 'ME', 'OK', 'HI', 'LA', 'PA', 'DE', 'MA', 'ID'].includes(m[1])) return 'S-' + m[1];
+  for (const [a, iso] of SALIAS) if (t.includes(' ' + a + ' ')) return iso === 'S-KS' && t.includes(' kansas city ') ? 'S-MO' : iso;
+  return null;
+}
+let MODE = 'states';
+const detect = (t) => MODE === 'states' ? detectState(t) : detectCountry(t);
 function detectCountry(text) {
   const raw = String(text || '');
   const fm = raw.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
@@ -212,8 +253,14 @@ function emitTrail(x, y, z, color, n) { for (let k = 0; k < n; k++) { const p = 
 
 // ================= racers =================
 const COLORS = ['#3df5ff', '#ffc83d', '#ff2d95', '#7dff9a', '#b9a8ff', '#ff7a1f', '#ff2d55', '#4d9bff'];
-function flagTexture(flag) {
+function flagTexture(flag, c) {
   const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256; const x = cv.getContext('2d');
+  if (c && c.isState) {
+    x.fillStyle = c.col; x.fillRect(0, 0, 512, 256); x.fillStyle = 'rgba(255,255,255,.9)'; x.fillRect(0, 118, 512, 20);
+    x.fillStyle = '#0b0820'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 120px Teko, Impact, sans-serif';
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) x.fillText(c.abbr, 64 + i * 128, 62 + j * 132);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  }
   x.fillStyle = '#f4f4f8'; x.fillRect(0, 0, 512, 256);
   x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '118px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
   for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) x.fillText(flag, 64 + i * 128, 66 + j * 128);
@@ -232,7 +279,7 @@ function addRacer(iso) {
   }
   const c = BY.get(iso), color = COLORS[lane % COLORS.length];
   const grp = new THREE.Group();
-  const ball = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ map: flagTexture(c.flag), roughness: 0.35, metalness: 0.1, emissive: 0xffffff, emissiveIntensity: 0.06 }));
+  const ball = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ map: flagTexture(c.flag, c), roughness: 0.35, metalness: 0.1, emissive: 0xffffff, emissiveIntensity: 0.06 }));
   ball.position.y = 0.5; grp.add(ball);
   const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(2) })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; grp.add(ring);
   const lead = Math.max(0, ...G.racers.map(r => r.d));
@@ -271,7 +318,7 @@ function joinUser(u, iso, quiet) {
 }
 const lastCmt = new Map();
 function onChat(e) {
-  const u = userOf(e), iso = detectCountry(e.comment);
+  const u = userOf(e), iso = detect(e.comment);
   let r = null;
   if (iso) r = joinUser(u, iso);
   else { const m = G.users.get(u.uid); if (m) r = racerOf(m.iso) || joinUser(u, m.iso, true); }
@@ -297,11 +344,11 @@ function onGift(e) {
   feed({ u, gift: e.giftName, giftPic: e.giftPic, count, text: `${r.c.flag} ${mega ? 'MEGA BOOST' : 'TURBO'} +${Math.round(amt)}m${pick ? ' (underdog!)' : ''}`, color: r.color, big: true });
   if (mega) { G.spot = { u, r, t: 0, dur: 2.6, label: `${r.c.flag} ${r.c.name.toUpperCase()} MEGA BOOST!` }; SH.G.spot = G.spot; G.shake = 0.25; confetti(r.grp.position.x, 1, r.grp.position.z, 80, 6); }
 }
-function onFollow(e) { const u = userOf(e), m = G.users.get(u.uid); const r = m && racerOf(m.iso); if (r) push(r, 3, u, true); feed({ u, text: r ? `followed · ${r.c.flag} +3m` : 'followed! comment your country 🌎', color: '#7dff9a' }); }
+function onFollow(e) { const u = userOf(e), m = G.users.get(u.uid); const r = m && racerOf(m.iso); if (r) push(r, 3, u, true); feed({ u, text: r ? `followed · ${r.c.flag} +3m` : `followed! comment your ${MODE === 'states' ? 'state' : 'country'}`, color: '#7dff9a' }); }
 function onShare(e) { const u = userOf(e), m = G.users.get(u.uid); const r = m && racerOf(m.iso); if (r) push(r, 4, u, true); feed({ u, text: r ? `shared · ${r.c.flag} +4m` : 'shared the live!', color: '#3df5ff' }); }
 function onJoin(e) { /* quiet */ }
 
-function seedRacers() { for (const iso of ['BR', 'US', 'MX', 'PT']) if (!racerOf(iso)) addRacer(iso); }
+function seedRacers() { for (const iso of (MODE === 'states' ? ['S-TX', 'S-FL', 'S-CA', 'S-NY'] : ['BR', 'US', 'MX', 'PT'])) if (!racerOf(iso)) addRacer(iso); }
 function startRace() {
   G.race++; G.phase = 'count'; G.phaseT = 0; G.winner = null; G.spot = null;
   for (const r of [...G.racers]) { if (G.time - r.lastAct > 120 && G.racers.length > 4) removeRacer(r); }
@@ -342,23 +389,29 @@ function avatar(X, Y, R, user, col) {
   else { hx.fillStyle = '#231d3a'; hx.fillRect(X - R, Y - R, R * 2, R * 2); txt(String((user && user.nick) || '?').replace(/^@/, '').charAt(0).toUpperCase(), X, Y + 1, R * 1.1, '#fff', 'center', 'inter'); }
   hx.restore();
 }
+function tag(c, X, Y, size) {
+  if (!c.isState) { txt(c.flag, X, Y, size, '#fff', 'center', 'emoji'); return; }
+  rr(hx, X - size * 0.72, Y - size * 0.5, size * 1.44, size, size * 0.3); hx.fillStyle = c.col; hx.fill();
+  txt(c.abbr, X, Y + size * 0.06, size * 0.95, '#0b0820', 'center');
+}
 const proj = new THREE.Vector3();
 function toScreen(v) { proj.copy(v).project(camera); return [(proj.x + 1) / 2 * W, (1 - proj.y) / 2 * H, proj.z]; }
+const TIPS_S = [['WHICH STATE IS #1?', 'COMMENT YOUR STATE 🇺🇸', '#3df5ff'], ['EVERY COMMENT', 'PUSHES YOUR STATE ➜', '#7dff9a'], ['🌹 ROSE = TURBO', 'BIG GIFTS = MEGA BOOST 🚀', '#ff2d95'], ['❤️ TAP TAP LIKES', 'HELP YOUR STATE WIN', '#ffc83d'], ['TYPE: TEXAS · FLORIDA', 'CALI · NY · OR JUST TX', '#b9a8ff']];
 const TIPS = [['COMMENT YOUR COUNTRY', 'TO JOIN THE RACE 🌎', '#3df5ff'], ['EVERY COMMENT', 'PUSHES YOUR FLAG ➜', '#7dff9a'], ['🌹 ROSE = TURBO', 'BIG GIFTS = MEGA BOOST 🚀', '#ff2d95'], ['❤️ TAP TAP LIKES', 'HELP YOUR COUNTRY', '#ffc83d'], ['TYPE: BRAZIL · USA · MEXICO', 'OR SEND YOUR FLAG 🇧🇷🇺🇸🇲🇽', '#b9a8ff']];
 function drawHUD(dt) {
   hx.setTransform(DPR, 0, 0, DPR, 0, 0); hx.clearRect(0, 0, W, H);
   const sorted = [...G.racers].sort((a, b) => b.d - a.d);
   // ---- title
   const ty = 46 * u;
-  hx.save(); hx.shadowColor = '#3df5ff'; hx.shadowBlur = 16 * u; txt('🏁 COUNTRY RACE', W / 2, ty, 40 * u, '#fff', 'center'); hx.restore();
-  txt(`RACE #${Math.max(1, G.race)} · ${G.racers.length} COUNTRIES · ${G.users.size} PLAYERS`, W / 2, ty + 25 * u, 12 * u, '#b9a8ff', 'center', 'inter');
+  hx.save(); hx.shadowColor = '#3df5ff'; hx.shadowBlur = 16 * u; txt(MODE === 'states' ? '🇺🇸 STATE RACE 🏁' : '🏁 COUNTRY RACE', W / 2, ty, 40 * u, '#fff', 'center'); hx.restore();
+  txt(`RACE #${Math.max(1, G.race)} · ${G.racers.length} ${MODE === 'states' ? 'STATES' : 'COUNTRIES'} · ${G.users.size} PLAYERS`, W / 2, ty + 25 * u, 12 * u, '#b9a8ff', 'center', 'inter');
   // ---- mini map
   const mx = 22 * u, mw = W - 44 * u, my = ty + 52 * u;
   rr(hx, mx, my - 5 * u, mw, 10 * u, 5 * u); hx.fillStyle = 'rgba(255,255,255,.12)'; hx.fill();
   const lead = sorted[0];
   if (lead) { rr(hx, mx, my - 5 * u, Math.max(10 * u, mw * clamp(lead.d / DIST, 0, 1)), 10 * u, 5 * u); const g = hx.createLinearGradient(mx, 0, mx + mw, 0); g.addColorStop(0, '#3df5ff'); g.addColorStop(1, '#ff2d95'); hx.fillStyle = g; hx.fill(); }
   txt('🏁', mx + mw + 2 * u, my, 16 * u, '#fff', 'center', 'emoji');
-  for (const r of [...sorted].reverse()) { const px = mx + mw * clamp(r.d / DIST, 0, 1); hx.beginPath(); hx.arc(px, my, 11 * u, 0, Math.PI * 2); hx.fillStyle = 'rgba(8,6,16,.9)'; hx.fill(); hx.strokeStyle = r.color; hx.lineWidth = 2 * u; hx.stroke(); txt(r.c.flag, px, my + 1 * u, 13 * u, '#fff', 'center', 'emoji'); }
+  for (const r of [...sorted].reverse()) { const px = mx + mw * clamp(r.d / DIST, 0, 1); hx.beginPath(); hx.arc(px, my, 11 * u, 0, Math.PI * 2); hx.fillStyle = 'rgba(8,6,16,.9)'; hx.fill(); hx.strokeStyle = r.color; hx.lineWidth = 2 * u; hx.stroke(); tag(r.c, px, my + 1 * u, 13 * u); }
   // ---- leaderboard (right)
   const lx = W - 10 * u, lw = 158 * u; let ly = my + 30 * u;
   for (let i = 0; i < Math.min(8, sorted.length); i++) {
@@ -366,7 +419,7 @@ function drawHUD(dt) {
     rr(hx, lx - lw, ly, lw, h - 3 * u, 8 * u); hx.fillStyle = i === 0 ? 'rgba(255,200,61,.22)' : 'rgba(8,6,16,.62)'; hx.fill();
     hx.fillStyle = r.color; hx.fillRect(lx - lw, ly + 4 * u, 3 * u, h - 11 * u);
     txt(String(i + 1), lx - lw + 13 * u, ly + h / 2, 17 * u, i === 0 ? '#ffc83d' : '#fff', 'center');
-    txt(r.c.flag, lx - lw + 34 * u, ly + h / 2 - 1 * u, 16 * u, '#fff', 'center', 'emoji');
+    tag(r.c, lx - lw + 34 * u, ly + h / 2 - 1 * u, 16 * u);
     const w = G.wins.get(r.iso);
     txt(r.c.name.toUpperCase(), lx - lw + 48 * u, ly + h / 2 + 1 * u, 16 * u, '#fff', 'left', 'teko', w ? 44 * u : 58 * u);
     txt(Math.floor(r.d) + 'm', lx - 6 * u, ly + h / 2 + 1 * u, 15 * u, '#cfe9ff', 'right');
@@ -396,7 +449,7 @@ function drawHUD(dt) {
   }
   // ---- tips card
   if (G.phase === 'race' || G.phase === 'count') {
-    const tip = TIPS[Math.floor(G.time / 3.6) % TIPS.length], cy = H * 0.8, ph = (G.time % 3.6) / 3.6;
+    const TL = MODE === 'states' ? TIPS_S : TIPS, tip = TL[Math.floor(G.time / 3.6) % TL.length], cy = H * 0.8, ph = (G.time % 3.6) / 3.6;
     const sc = 1 + Math.sin(G.time * 6) * 0.02, pop = easeOut(clamp(ph * 8, 0, 1));
     hx.save(); hx.translate(W / 2, cy); hx.scale(sc * (0.6 + 0.4 * pop), sc * (0.6 + 0.4 * pop)); hx.globalAlpha = pop;
     const cw = Math.min(W - 30 * u, 360 * u), ch = 70 * u;
@@ -424,10 +477,10 @@ function drawHUD(dt) {
     const r = G.winner, t = G.phaseT, a = clamp(t / 0.3, 0, 1), y = H * 0.36, sc = 0.7 + 0.3 * easeOut(clamp(t / 0.5, 0, 1));
     hx.globalAlpha = a; hx.fillStyle = 'rgba(0,0,0,.55)'; hx.fillRect(0, y - 110 * u, W, 250 * u);
     hx.save(); hx.translate(W / 2, y); hx.scale(sc, sc);
-    txt(r.c.flag, 0, -50 * u, 84 * u, '#fff', 'center', 'emoji');
+    tag(r.c, 0, -50 * u, r.c.isState ? 64 * u : 84 * u);
     hx.shadowColor = r.color; hx.shadowBlur = 24 * u; txt(r.c.name.toUpperCase() + ' WINS!', 0, 30 * u, 62 * u, '#fff', 'center', 'teko', W - 30 * u); hx.restore();
     if (G.mvp) { avatar(W / 2 - 70 * u, y + 82 * u, 18 * u, G.mvp.u, r.color); txt('TOP FAN @' + String(G.mvp.u.nick).slice(0, 16), W / 2 - 46 * u, y + 82 * u, 14 * u, '#ffe08a', 'left', 'inter', 200 * u); }
-    txt(`NEXT RACE IN ${Math.max(0, Math.ceil(8 - t))}… COMMENT YOUR COUNTRY!`, W / 2, y + 118 * u, 13 * u, '#b9a8ff', 'center', 'inter', W - 30 * u);
+    txt(`NEXT RACE IN ${Math.max(0, Math.ceil(8 - t))}… COMMENT YOUR ${MODE === 'states' ? 'STATE' : 'COUNTRY'}!`, W / 2, y + 118 * u, 13 * u, '#b9a8ff', 'center', 'inter', W - 30 * u);
     hx.globalAlpha = 1;
   }
 }
@@ -482,12 +535,13 @@ function tick() {
 
 // ================= demo =================
 const DEMO_U = ['ana_luz', 'pedrinho77', 'mari.gamer', 'joao_br', 'katy_fan', 'luis.mx', 'sofia', 'TheRealMike', 'bia_rosa', 'davi99', 'carlos_pt', 'yuki.jp', 'amara_ng', 'rafa_co'];
+const DEMO_S = ['Texas!!', 'FLORIDA 🌴', 'cali', 'NYC', 'tx', 'georgia', 'ohio', 'go chicago', 'jersey', 'Arizona', 'vegas baby', 'philly', 'NC', 'Tennessee'];
 const DEMO_C = ['Brasil 🇧🇷', 'USA!!', 'mexico', 'Portugal', 'colombia', '🇦🇷', 'peru', 'Japan', 'nigeria', 'philippines', 'España', 'go brazil', 'vamos mexico', 'India'];
 let demoAcc = 0;
 function demoTick(dt) {
   demoAcc += dt; if (demoAcc < 0.45 || G.phase !== 'race') return; demoAcc = 0;
   const nick = DEMO_U[Math.floor(Math.random() * DEMO_U.length)], r = Math.random();
-  if (r < 0.55) onChat({ uid: nick, nick, comment: Math.random() < 0.4 ? DEMO_C[Math.floor(Math.random() * DEMO_C.length)] : 'lets goooo' });
+  if (r < 0.55) onChat({ uid: nick, nick, comment: Math.random() < 0.4 ? (MODE === 'states' ? DEMO_S : DEMO_C)[Math.floor(Math.random() * 14)] : 'lets goooo' });
   else if (r < 0.8) onLike({ uid: nick, nick, count: Math.ceil(rand(3, 30)) });
   else if (r < 0.95) onGift({ uid: nick, nick, giftName: 'Rose', diamonds: 1, count: Math.random() < 0.3 ? Math.ceil(rand(2, 9)) : 1 });
   else onGift({ uid: nick, nick, giftName: Math.random() < 0.7 ? 'Finger Heart' : 'Perfume', diamonds: Math.random() < 0.7 ? 5 : 30, count: 1 });
@@ -496,8 +550,8 @@ function demoTick(dt) {
 // ================= live connection + setup =================
 let ws = null, wsRetry = 0;
 const store = { get(k, d) { try { const v = localStorage.getItem('race.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('race.' + k, JSON.stringify(v)); } catch {} } };
-const cfg = { user: store.get('user', '') };
-$('user').value = cfg.user;
+const cfg = { user: store.get('user', ''), mode: store.get('mode', 'states') };
+$('user').value = cfg.user; $('mode').value = cfg.mode; MODE = cfg.mode;
 function setStatus(m, c) { $('status').textContent = m; $('status').style.color = c || '#9a94b8'; }
 function connect() {
   if (!cfg.user) return;
@@ -515,6 +569,8 @@ function connect() {
 }
 function begin(demo) {
   cfg.user = $('user').value.trim().replace(/^@/, ''); store.set('user', cfg.user);
+  const nm = $('mode').value; store.set('mode', nm);
+  if (nm !== MODE) { MODE = nm; for (const r of [...G.racers]) removeRacer(r); G.users.clear(); G.wins.clear(); G.feed.length = 0; seedRacers(); if (G.race > 0) { G.race = 0; } }
   if (!demo && !cfg.user) { setStatus('Type your TikTok @ first.', '#ff6b6b'); return; }
   G.demo = demo; G.started = true; $('setup').classList.add('hidden');
   if (!demo) connect();
@@ -525,7 +581,7 @@ $('demo').onclick = () => begin(true);
 $('menu').onclick = () => $('setup').classList.remove('hidden');
 seedRacers();
 requestAnimationFrame(tick);
-window.__race = { G, onChat, onGift, onLike, onFollow, onShare, detectCountry, startRace };
+window.__race = { G, onChat, onGift, onLike, onFollow, onShare, detectCountry, detectState, startRace };
 </script>
 <script type="module" src="/fx.js"></script>
 </body>
