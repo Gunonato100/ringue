@@ -190,6 +190,61 @@ async function CROWD_MAIN() {
   requestAnimationFrame(tick);
   window.__crowd = { cheer, startWave, cannons, rain };
 
+
+  // ---------- gifter's face on the fighter's head (DOM overlay, above the HUD) ----------
+  const FCOL = ['#ff2d55', '#ffc83d'];
+  const faces = [0, 1].map(side => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    cv.style.cssText = 'position:fixed;left:0;top:0;z-index:4;pointer-events:none;display:none;will-change:transform';
+    document.body.appendChild(cv);
+    return { side, cv, x: cv.getContext('2d'), uid: null, u: null, k: 0, pop: 0, drawn: false };
+  });
+  const imgCache = new Map();
+  function getImg(url) {
+    if (!url) return null; let a = imgCache.get(url);
+    if (!a) { a = { img: new Image(), ok: false }; a.img.decoding = 'async'; a.img.onload = () => { a.ok = true; }; a.img.src = '/img?u=' + encodeURIComponent(url); imgCache.set(url, a); if (imgCache.size > 60) imgCache.delete(imgCache.keys().next().value); }
+    return a;
+  }
+  function paintFace(fc, u) {
+    const x = fc.x, c = FCOL[fc.side], a = getImg(u.pic);
+    x.clearRect(0, 0, 256, 256);
+    x.save(); x.shadowColor = c; x.shadowBlur = 22; x.beginPath(); x.arc(128, 112, 96, 0, Math.PI * 2); x.fillStyle = c; x.fill(); x.restore();
+    x.save(); x.beginPath(); x.arc(128, 112, 88, 0, Math.PI * 2); x.clip();
+    if (a && a.ok) { const im = a.img, s = Math.max(176 / im.width, 176 / im.height); x.drawImage(im, 128 - im.width * s / 2, 112 - im.height * s / 2, im.width * s, im.height * s); }
+    else { x.fillStyle = '#1a1424'; x.fillRect(0, 0, 256, 256); x.fillStyle = c; x.font = '900 110px Impact, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(u.nick || '?').replace(/^@/, '').charAt(0).toUpperCase(), 128, 118); }
+    x.restore();
+    const nm = '@' + String(u.nick || '').slice(0, 16);
+    x.font = '800 30px Inter, system-ui, sans-serif'; const w = Math.min(244, x.measureText(nm).width + 28);
+    x.fillStyle = 'rgba(8,6,16,.92)'; x.beginPath(); x.roundRect(128 - w / 2, 204, w, 44, 22); x.fill(); x.strokeStyle = c; x.lineWidth = 4; x.stroke();
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(nm, 128, 227, 220);
+    fc.drawn = !!(a && a.ok) || !u.pic;
+  }
+  const HP = new THREE.Vector3();
+  let lastF = performance.now();
+  function faceTick() {
+    requestAnimationFrame(faceTick);
+    const now = performance.now(), dt = Math.min(0.05, (now - lastF) / 1000); lastF = now;
+    const hud = document.getElementById('hud');
+    for (const fc of faces) {
+      const f = F[fc.side], u = f.byU, active = !!(u && f.byT < 7 && f.rig && f.rig.head);
+      if (active && u.uid !== fc.uid) { fc.uid = u.uid; fc.u = u; fc.pop = 1; paintFace(fc, u); }
+      else if (active && !fc.drawn) paintFace(fc, fc.u);
+      fc.k += ((active ? 1 : 0) - fc.k) * Math.min(1, dt * 8);
+      fc.pop = Math.max(0, fc.pop - dt * 3);
+      if (fc.k < 0.02 || !f.rig || !hud) { fc.cv.style.display = 'none'; continue; }
+      const r = hud.getBoundingClientRect(), cam = R.camera;
+      f.rig.head.getWorldPosition(HP); const dist = HP.distanceTo(cam.position);
+      HP.project(cam); if (HP.z > 1) { fc.cv.style.display = 'none'; continue; }
+      const px = r.left + (HP.x + 1) / 2 * r.width, py = r.top + (1 - HP.y) / 2 * r.height;
+      const worldPx = r.height / (2 * dist * Math.tan(cam.fov * Math.PI / 360));
+      const size = Math.max(70, 0.62 * worldPx) * fc.k * (1 + fc.pop * 0.35 * Math.sin(fc.pop * 9));
+      fc.cv.style.display = 'block'; fc.cv.style.width = fc.cv.style.height = size + 'px';
+      fc.cv.style.transform = 'translate(' + (px - size / 2) + 'px,' + (py - size * 0.44) + 'px)';
+      fc.cv.style.opacity = String(Math.min(1, fc.k * 1.2) * (G.spot ? 0.35 : 1));
+    }
+  }
+  requestAnimationFrame(faceTick);
+
   // ---------- TEAM WAR bar (who is supporting more this round) ----------
   const st = document.createElement('style');
   st.textContent = '#war{position:fixed;z-index:3;pointer-events:none;display:none;transform:translateX(-50%);font-family:Teko,Impact,sans-serif;font-weight:700;color:#fff;letter-spacing:.04em;white-space:nowrap}' +
