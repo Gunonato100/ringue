@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0910">
+<title>Marble Mayhem</title>
+</head><body>
+<script src="/games/kit.js"></script>
+<script>
+const K = Kit, S = K.canvas(), ctx = S.ctx;
+const SLOTS = [500, 50, 10, 100, 25, 100, 10, 50, 500], SCOL = ['#ffb547', '#ff2e7e', '#9b7bff', '#3d8bff', '#5be38f', '#3d8bff', '#9b7bff', '#ff2e7e', '#ffb547'];
+const G = { balls: [], pegs: [], score: new Map(), cooldown: new Map(), flash: [], round: 1, roundT: 0, ROUND: 150, king: null, hits: [] };
+let L = {}; // layout in px
+function layout() {
+  const W = S.W, H = S.H, u = S.u;
+  const top = H * 0.2, bottom = H * 0.8, rows = 11, bw = Math.min(W - 24 * u, 420 * u), left = (W - bw) / 2;
+  const gapY = (bottom - top - 50 * u) / rows, gapX = bw / 9;
+  G.pegs = [];
+  for (let r = 0; r < rows; r++) { const n = r % 2 ? 9 : 10; for (let i = 0; i < n; i++) G.pegs.push({ x: left + (r % 2 ? gapX * (i + 0.5) + gapX * 0.0 : gapX * i) + (r % 2 ? 0 : 0), y: top + r * gapY, r: 4 * u, glow: 0 }); }
+  // center rows nicely within board
+  G.pegs.forEach(p => { if (p.x <= left + 1) p.x = left + 6 * u; if (p.x >= left + bw - 1) p.x = left + bw - 6 * u; });
+  L = { W, H, u, top, bottom, left, bw, gapX, slotY: bottom - 20 * u, slotH: 46 * u, ballR: 10 * u };
+}
+S.onResize = layout; layout();
+function addScore(u, v) { const e = G.score.get(u.uid) || { u, v: 0, drops: 0 }; e.v += v; e.u = u; G.score.set(u.uid, e); }
+function drop(u, gold, mult = 1) {
+  if (G.balls.length > 70) G.balls.shift();
+  const x = L.left + L.bw / 2 + (Math.random() - 0.5) * L.bw * 0.5;
+  G.balls.push({ u, x, y: L.top - 60 * L.u, vx: (Math.random() - 0.5) * 60, vy: 0, r: L.ballR * (gold ? 1.5 : 1), gold, mult, done: false, t: 0 });
+  K.sfx.pop();
+}
+function onEvent(e) {
+  if (e.type === 'chat') { const now = performance.now(); if (now - (G.cooldown.get(e.u.uid) || 0) < 4000) return; G.cooldown.set(e.u.uid, now); drop(e.u, false); }
+  else if (e.type === 'gift') {
+    const n = Math.min(6, e.gift.count), gold = e.gift.total >= 5; for (let i = 0; i < n; i++) setTimeout(() => drop(e.u, gold, gold ? 3 : 2), i * 180);
+    K.toast(e.u, `${e.gift.name} → ${n} ${gold ? 'GOLDEN' : 'BONUS'} MARBLE${n > 1 ? 'S' : ''} x${gold ? 3 : 2}`, '#ffb547', e.gift.pic); K.sfx.gift();
+  } else if (e.type === 'like') { if (Math.random() < Math.min(0.5, e.count / 40)) drop(e.u, false); }
+  else if (e.type === 'follow') { drop(e.u, true, 2); K.toast(e.u, 'followed → free golden marble!', '#5be38f'); }
+}
+function demo() { const r = Math.random(); if (r < 0.7) return K.demoChat('drop!'); if (r < 0.9) return K.demoLike(); return K.demoGift(); }
+function step(dt) {
+  const g = 900 * L.u, u = L.u;
+  for (const b of G.balls) {
+    if (b.done) { b.t += dt; continue; }
+    b.vy += g * dt; b.vx *= 0.999; b.x += b.vx * dt; b.y += b.vy * dt;
+    for (const p of G.pegs) {
+      const dx = b.x - p.x, dy = b.y - p.y, d = Math.hypot(dx, dy), m = b.r + p.r;
+      if (d < m && d > 0.01) { const nx = dx / d, ny = dy / d; b.x = p.x + nx * m; b.y = p.y + ny * m; const vn = b.vx * nx + b.vy * ny; if (vn < 0) { b.vx -= 1.55 * vn * nx; b.vy -= 1.55 * vn * ny; b.vx += (Math.random() - 0.5) * 40 * u; } p.glow = 1; if (Math.random() < 0.25) K.sfx.tick(); }
+    }
+    if (b.x < L.left + b.r) { b.x = L.left + b.r; b.vx = Math.abs(b.vx) * 0.6; } if (b.x > L.left + L.bw - b.r) { b.x = L.left + L.bw - b.r; b.vx = -Math.abs(b.vx) * 0.6; }
+    if (b.y > L.slotY) {
+      b.done = true; b.t = 0; const si = Math.max(0, Math.min(8, Math.floor((b.x - L.left) / L.gapX))), pts = SLOTS[si] * b.mult;
+      b.slot = si; b.pts = pts; addScore(b.u, pts); G.flash.push({ si, t: 0 }); G.hits.push({ x: b.x, y: L.slotY - 30 * u, txt: '+' + pts, col: SCOL[si], t: 0 });
+      if (SLOTS[si] === 500) { K.sfx.win(); K.confetti(b.x, L.slotY, 140); K.banner('JACKPOT!', `@${b.u.nick} +${pts}`, '#ffb547', 1600); } else K.sfx.coin();
+    }
+  }
+  // simple ball-ball separation
+  for (let i = 0; i < G.balls.length; i++) for (let j = i + 1; j < G.balls.length; j++) {
+    const a = G.balls[i], b = G.balls[j]; if (a.done || b.done) continue; const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), m = a.r + b.r;
+    if (d < m && d > 0.01) { const nx = dx / d, ny = dy / d, o = (m - d) / 2; a.x -= nx * o; a.y -= ny * o; b.x += nx * o; b.y += ny * o; }
+  }
+  G.balls = G.balls.filter(b => !(b.done && b.t > 1.2));
+  for (const p of G.pegs) p.glow = Math.max(0, p.glow - dt * 3);
+  G.flash = G.flash.filter(f => (f.t += dt) < 0.6); G.hits = G.hits.filter(h => (h.t += dt) < 1.2);
+}
+function draw(dt, T) {
+  const { W, H, u } = L;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#160e22'); g.addColorStop(1, '#0b0910'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // board glass
+  K.rrect(ctx, L.left - 8 * u, L.top - 28 * u, L.bw + 16 * u, L.bottom - L.top + 58 * u, 22 * u); ctx.fillStyle = 'rgba(255,255,255,.035)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,46,126,.35)'; ctx.lineWidth = 2 * u; ctx.stroke();
+  // pegs
+  for (const p of G.pegs) { if (p.glow > 0) { ctx.fillStyle = `rgba(255,181,71,${p.glow * 0.5})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 3, 0, 7); ctx.fill(); } ctx.fillStyle = p.glow > 0.2 ? '#ffb547' : '#cfc6d6'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); }
+  // slots
+  for (let i = 0; i < 9; i++) {
+    const x = L.left + i * L.gapX, fl = G.flash.find(f => f.si === i), k = fl ? 1 - fl.t / 0.6 : 0;
+    K.rrect(ctx, x + 2 * u, L.slotY, L.gapX - 4 * u, L.slotH, 8 * u); ctx.fillStyle = SCOL[i] + (k > 0 ? 'ff' : '55'); ctx.fill();
+    if (k > 0) { ctx.shadowColor = SCOL[i]; ctx.shadowBlur = 30 * k; ctx.fill(); ctx.shadowBlur = 0; }
+    K.text(ctx, String(SLOTS[i]), x + L.gapX / 2, L.slotY + L.slotH / 2 + 2 * u, (SLOTS[i] >= 100 ? 17 : 19) * u, '#fff');
+  }
+  // balls
+  for (const b of G.balls) {
+    const a = b.done ? Math.max(0, 1 - b.t / 1.2) : 1; ctx.globalAlpha = a;
+    if (b.gold) { ctx.shadowColor = '#ffb547'; ctx.shadowBlur = 18 * u; }
+    K.drawAvatar(ctx, b.x, b.y, b.r, b.u, b.gold ? '#ffb547' : K.colorOf(b.u)); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  }
+  for (const h of G.hits) { ctx.globalAlpha = 1 - h.t / 1.2; K.text(ctx, h.txt, h.x, h.y - h.t * 40 * u, 24 * u, h.col); ctx.globalAlpha = 1; }
+  // HUD
+  K.text(ctx, '🔮 MARBLE MAYHEM', W / 2, 34 * u, 36 * u, '#fff', 'center', 'teko', W - 30 * u);
+  const left = Math.max(0, G.ROUND - G.roundT); K.text(ctx, `ROUND ${G.round} · ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')} LEFT`, W / 2, 60 * u, 12 * u, '#ffb547', 'center', 'inter');
+  const rows = [...G.score.values()].sort((a, b) => b.v - a.v).slice(0, 3).map(r => ({ u: r.u, v: r.v }));
+  // mini podium in the header
+  rows.forEach((r, i) => { const x = W / 2 + (i === 0 ? 0 : i === 1 ? -1 : 1) * 110 * u, y = 98 * u + (i ? 6 * u : 0); K.drawAvatar(ctx, x - 34 * u, y, (i ? 13 : 16) * u, r.u, i === 0 ? '#ffb547' : '#fff'); K.text(ctx, '@' + r.u.nick.slice(0, 10), x - 14 * u, y - 7 * u, 10 * u, '#fff', 'left', 'inter', 70 * u); K.text(ctx, String(r.v), x - 14 * u, y + 9 * u, 17 * u, '#ffb547', 'left'); if (i === 0) K.text(ctx, '👑', x - 34 * u, y - 24 * u, 15 * u, '#fff', 'center', 'emoji'); });
+}
+K.loop((dt, T) => {
+  const sub = 3; for (let i = 0; i < sub; i++) step(dt / sub);
+  if (K.started) { G.roundT += dt; if (G.roundT > G.ROUND) {
+    const top = [...G.score.values()].sort((a, b) => b.v - a.v)[0];
+    if (top) { K.banner('PLINKO KING 👑', `@${top.u.nick} · ${top.v} pts`, '#ffb547', 4000); K.confetti(S.W / 2, S.H * 0.4, 240, 1.3); K.sfx.win(); }
+    G.score = new Map(); G.roundT = 0; G.round++;
+  } }
+  draw(dt, T);
+});
+K.start({
+  title: 'MARBLE MAYHEM', desc: 'Every viewer who comments drops a marble with their profile photo. It bounces down the pegs into a prize slot. The highest score at the end of each round is crowned Plinko King.',
+  rules: ['Comment anything = drop your marble (1 every 4s)', '🎯 Edge slots = 500 JACKPOT', '🎁 Gifts = bonus marbles x2 (5+ coins = golden x3)', '➕ Follow = free golden marble'],
+  tips: [['COMMENT ANYTHING', 'TO DROP YOUR MARBLE', '#ff2e7e'], ['HIT THE EDGES', 'FOR 500 JACKPOT 💰', '#ffb547'], ['🎁 GIFTS =', 'GOLDEN MARBLES x3', '#ffb547'], ['MOST POINTS', 'BECOMES PLINKO KING 👑', '#5be38f']],
+  onEvent, demo, demoEvery: 380, feedTop: 0.135, feedMax: 2, tipBottom: 0.005,
+  onStart() { K.banner('DROP YOUR MARBLE!', 'COMMENT ANYTHING', '#ff2e7e', 1600); },
+});
+</script>
+</body></html>

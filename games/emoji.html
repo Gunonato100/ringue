@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0910">
+<title>Emoji Guess</title>
+</head><body>
+<script src="/games/kit.js"></script>
+<script>
+const K = Kit, S = K.canvas(), ctx = S.ctx;
+// [emojis, answer, category, extra accepted answers]
+const PZ = [
+  ['🦁👑', 'The Lion King', 'MOVIE'], ['❄️👸', 'Frozen', 'MOVIE'], ['🚢🧊💔', 'Titanic', 'MOVIE'], ['🦖🏝️', 'Jurassic Park', 'MOVIE'],
+  ['🧸🤠🚀', 'Toy Story', 'MOVIE'], ['🐠🔍', 'Finding Nemo', 'MOVIE', ['nemo']], ['👽📞🏠', 'ET', 'MOVIE', ['e t', 'e.t.']], ['🕷️🧑', 'Spider-Man', 'MOVIE', ['spiderman', 'spider man']],
+  ['⚡👓🧙', 'Harry Potter', 'MOVIE'], ['🐀👨‍🍳', 'Ratatouille', 'MOVIE'], ['🐼🥋', 'Kung Fu Panda', 'MOVIE'], ['🦈🌊', 'Jaws', 'MOVIE'],
+  ['🕰️🔙🚗', 'Back to the Future', 'MOVIE'], ['🤖❤️🌱', 'WALL-E', 'MOVIE', ['walle', 'wall e']], ['🏴‍☠️🚢🌴', 'Pirates of the Caribbean', 'MOVIE', ['pirates']], ['🦇🧔🌃', 'Batman', 'MOVIE'],
+  ['👻🚫', 'Ghostbusters', 'MOVIE', ['ghost busters']], ['🍫🏭', 'Charlie and the Chocolate Factory', 'MOVIE', ['chocolate factory', 'willy wonka', 'wonka']], ['🧞🪔', 'Aladdin', 'MOVIE'], ['🐉🏠🧒', 'How to Train Your Dragon', 'MOVIE'],
+  ['🗽🍎', 'New York', 'PLACE', ['nyc', 'new york city']], ['🌴🎢🏰', 'Orlando', 'PLACE'], ['🎰🌵💡', 'Las Vegas', 'PLACE', ['vegas']], ['🗼🥐', 'Paris', 'PLACE'],
+  ['🌉🌁', 'San Francisco', 'PLACE', ['sf']], ['🤠🐂⭐', 'Texas', 'PLACE'], ['🏝️🌺🌋', 'Hawaii', 'PLACE'], ['🎬⭐🌴', 'Hollywood', 'PLACE', ['los angeles', 'la']],
+  ['🍕🇮🇹', 'Pizza', 'FOOD'], ['🌭⚾', 'Hot dog', 'FOOD', ['hotdog']], ['🍟🧂', 'French fries', 'FOOD', ['fries']], ['🥞🍁', 'Pancakes', 'FOOD', ['pancake']],
+  ['🍔👑', 'Burger King', 'BRAND'], ['🍎📱', 'iPhone', 'THING'], ['⏰🔔😴', 'Alarm clock', 'THING', ['alarm']], ['☀️🕶️🏖️', 'Summer', 'THING'],
+  ['🎄🎅🎁', 'Christmas', 'HOLIDAY'], ['🎃👻🍬', 'Halloween', 'HOLIDAY'], ['🦃🥧🍂', 'Thanksgiving', 'HOLIDAY'], ['🎆🇺🇸', 'Fourth of July', 'HOLIDAY', ['4th of july', 'independence day', 'july 4th']],
+  ['🌧️🌈', 'Rainbow', 'THING'], ['⭐🔫⚔️🌌', 'Star Wars', 'MOVIE'],
+];
+const clean = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(the|a|an)\b/g, ' ').replace(/\s+/g, ' ').trim();
+const G = { order: [], p: null, phase: 'intro', t: 0, dur: 30, reveal: [], solvers: [], score: new Map(), round: 0, wrongs: [] };
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function next() {
+  if (!G.order.length) G.order = shuffle(PZ.map((_, i) => i));
+  G.p = PZ[G.order.pop()]; G.phase = 'play'; G.t = 0; G.solvers = []; G.round++; G.wrongs = [];
+  const letters = [...G.p[1]].map((c, i) => /[a-z0-9]/i.test(c) ? i : -1).filter(i => i >= 0); G.hidden = shuffle(letters); G.total = letters.length; G.reveal = new Set();
+  K.sfx.whoosh();
+}
+function hint(n = 1) { const keep = Math.max(2, Math.ceil(G.total * 0.5)); for (let k = 0; k < n && G.hidden.length > keep; k++) G.reveal.add(G.hidden.pop()); }
+function answers() { return [G.p[1], ...(G.p[3] || [])].map(clean); }
+function addScore(u, v) { const e = G.score.get(u.uid) || { u, v: 0 }; e.v += v; e.u = u; G.score.set(u.uid, e); }
+function onEvent(e) {
+  if (e.type === 'chat' && G.phase === 'play') {
+    if (G.solvers.some(s => s.u.uid === e.u.uid)) return;
+    const g = clean(e.text); if (!g) return;
+    if (answers().includes(g)) {
+      const pts = [100, 70, 50, 30, 20][G.solvers.length] || 10; G.solvers.push({ u: e.u, pts }); addScore(e.u, pts);
+      K.sfx.coin(); if (G.solvers.length === 1) { K.sfx.win(); K.banner('FIRST! 👑', `@${e.u.nick} +${pts}`, '#ffb547', 1400); K.confetti(S.W / 2, S.H * 0.3, 100); }
+      if (G.solvers.length >= 5) end();
+    } else if (g.length > 2 && g.length < 30) { G.wrongs.unshift({ t: e.text.slice(0, 22), u: e.u, a: 1 }); if (G.wrongs.length > 6) G.wrongs.pop(); }
+  } else if (e.type === 'gift') {
+    const n = e.gift.total >= 10 ? 2 : 1; if (G.phase === 'play') hint(n); addScore(e.u, Math.min(60, 5 * e.gift.total));
+    K.toast(e.u, `${e.gift.name} → revealed ${n} letter${n > 1 ? 's' : ''} 🔎`, '#ffb547', e.gift.pic); K.sfx.gift();
+  } else if (e.type === 'like' && G.phase === 'play') { G.likeAcc = (G.likeAcc || 0) + e.count; if (G.likeAcc > 600) { G.likeAcc = 0; hint(1); K.toast(e.u, 'likes revealed a letter ❤️', '#ff2e7e'); } }
+}
+function end() { G.phase = 'reveal'; G.t = 0; G.reveal = new Set([...G.p[1]].map((_, i) => i)); if (!G.solvers.length) K.sfx.wrong(); }
+function demo() {
+  if (G.phase !== 'play') return null; const r = Math.random();
+  if (r < 0.1) return K.demoGift(); if (r < 0.2) return K.demoLike();
+  if (G.t > 8 && Math.random() < 0.25) return K.demoChat(G.p[1]);
+  return K.demoChat(K.pick(['spiderman?', 'nemo', 'titanic', 'idk', 'frozen!!', 'the lion king', 'paris', 'pizza', 'vegas', 'toy story']));
+}
+function draw(dt, T) {
+  const W = S.W, H = S.H, u = S.u;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1d1030'); g.addColorStop(1, '#0b0910'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 14; i++) { const x = (i * 97 + T * 20) % (W + 60) - 30, y = (i * 173) % H; ctx.globalAlpha = 0.07; K.text(ctx, ['😀', '🎬', '🍕', '🌴', '⭐', '🎉', '❓'][i % 7], x, y, 40 * u, '#fff', 'center', 'emoji'); } ctx.globalAlpha = 1;
+  K.text(ctx, '🤔 EMOJI GUESS', W / 2, 38 * u, 40 * u, '#fff');
+  if (!G.p) { K.text(ctx, 'GET READY…', W / 2, H * 0.35, 44 * u, '#fff'); return; }
+  K.text(ctx, `PUZZLE ${G.round} · ${G.p[2]}`, W / 2, 66 * u, 12 * u, '#ffb547', 'center', 'inter');
+  // timer bar
+  const left = Math.max(0, G.dur - G.t), bw = W - 40 * u; K.rrect(ctx, 20 * u, 82 * u, bw, 8 * u, 4 * u); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
+  if (G.phase === 'play') { K.rrect(ctx, 20 * u, 82 * u, Math.max(8 * u, bw * left / G.dur), 8 * u, 4 * u); ctx.fillStyle = left < 8 ? '#ff2e5e' : '#ffb547'; ctx.fill(); }
+  // emoji card
+  const cy = H * 0.27, bob = Math.sin(T * 2) * 4 * u;
+  K.rrect(ctx, 20 * u, cy - 70 * u, W - 40 * u, 140 * u, 24 * u); ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,181,71,.5)'; ctx.lineWidth = 2 * u; ctx.stroke();
+  const em = (typeof Intl !== 'undefined' && Intl.Segmenter) ? [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(G.p[0])].map(s => s.segment) : [...G.p[0]];
+  em.forEach((e, i) => { const x = W / 2 + (i - (em.length - 1) / 2) * 76 * u; K.text(ctx, e, x, cy + bob * (i % 2 ? -1 : 1), 62 * u, '#fff', 'center', 'emoji'); });
+  // letter slots
+  const ans = [...G.p[1]], words = G.p[1].split(' '); let lineY = cy + 110 * u;
+  const slot = Math.min(28 * u, (W - 40 * u) / Math.max(...words.map(w => w.length)) - 4 * u);
+  let idx = 0; words.forEach((w, wi) => {
+    const x0 = W / 2 - (w.length * (slot + 4 * u)) / 2;
+    [...w].forEach((c, ci) => { const x = x0 + ci * (slot + 4 * u), show = G.reveal.has(idx) || !/[a-z0-9]/i.test(c);
+      K.rrect(ctx, x, lineY, slot, slot * 1.25, 6 * u); ctx.fillStyle = show ? (G.phase === 'reveal' ? '#5be38f' : '#ffb547') : 'rgba(255,255,255,.12)'; ctx.fill();
+      if (show) K.text(ctx, c.toUpperCase(), x + slot / 2, lineY + slot * 0.68, slot * 1.1, '#1a0610'); idx++; });
+    idx++; lineY += slot * 1.25 + 8 * u;
+  });
+  // solvers
+  const sy = lineY + 24 * u;
+  K.text(ctx, G.solvers.length ? '✅ GOT IT' : 'TYPE YOUR GUESS IN THE CHAT ⌨️', W / 2, sy, 18 * u, G.solvers.length ? '#5be38f' : '#fff');
+  G.solvers.forEach((s, i) => { const x = W / 2 + (i - (G.solvers.length - 1) / 2) * 70 * u, y = sy + 40 * u; K.drawAvatar(ctx, x, y, (i ? 15 : 20) * u, s.u, i ? '#5be38f' : '#ffb547'); if (!i) K.text(ctx, '👑', x, y - 28 * u, 16 * u, '#fff', 'center', 'emoji'); K.text(ctx, '+' + s.pts, x, y + 28 * u, 15 * u, '#ffb547'); });
+  // wrong guesses ticker
+  if (G.phase === 'play') G.wrongs.slice(0, 4).forEach((w, i) => { ctx.globalAlpha = 0.6 - i * 0.12; K.text(ctx, `❌ "${w.t}"`, W / 2, sy + 90 * u + i * 18 * u, 12 * u, '#ff8a8a', 'center', 'inter'); }); ctx.globalAlpha = 1;
+  // leaderboard
+  const rows = [...G.score.values()].sort((a, b) => b.v - a.v).slice(0, 3).map(r => ({ u: r.u, v: r.v }));
+  if (rows.length) K.board(ctx, S, rows, 14 * u, H * 0.71, W - 28 * u, '🏆 TOP GUESSERS', '#ffb547');
+}
+K.loop((dt, T) => {
+  if (G.phase !== 'intro') G.t += dt;
+  if (G.phase === 'play') { if (G.t > G.dur * 0.5 && G.reveal.size < 1) hint(1); if (G.t > G.dur * 0.75 && G.reveal.size < 2) hint(1); if (G.t >= G.dur) end(); }
+  else if (G.phase === 'reveal' && G.t > 5) next();
+  draw(dt, T);
+});
+K.start({
+  title: 'EMOJI GUESS', desc: 'Emojis on screen describe a movie, place, food or holiday. The first viewers to type the right answer in the chat score points and get the crown.',
+  rules: ['Type your guess in the chat', 'First 5 correct answers score points (first = 100)', '🎁 Gifts reveal letters for everyone', '❤️ Every 600 likes reveals a letter'],
+  tips: [['WHAT IS IT? 🤔', 'TYPE YOUR GUESS', '#ffb547'], ['FIRST CORRECT', 'GETS THE CROWN 👑', '#5be38f'], ['🎁 GIFT =', 'REVEAL A LETTER', '#ff2e7e']],
+  onEvent, demo, demoEvery: 450, feedTop: 0.115, feedMax: 1, tipBottom: 0.005,
+  onStart() { K.banner('EMOJI GUESS', 'GET READY!', '#ffb547', 1400); setTimeout(next, 1500); },
+});
+</script>
+</body></html>

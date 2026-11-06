@@ -1907,6 +1907,13 @@ Bun.serve<{ user: string; lastAsk: number }, {}>({
       if (server.upgrade(req, { data: { user, lastAsk: 0 } })) return;
       return new Response('upgrade failed', { status: 400 });
     }
+    if (url.pathname.startsWith('/games/')) {
+      const name = url.pathname.slice(7).replace(/[^a-z0-9._-]/gi, '');
+      const file = name.endsWith('.js') ? name : (name.replace(/\.html$/, '') || 'index') + '.html';
+      const f = Bun.file(import.meta.dir + '/games/' + file);
+      if (await f.exists()) return new Response(f, { headers: { 'content-type': file.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/html; charset=utf-8', 'cache-control': 'no-cache' } });
+      return new Response('not found', { status: 404 });
+    }
     if (url.pathname === '/race' || url.pathname === '/race.html') {
       const f = Bun.file(import.meta.dir + '/race.html');
       if (await f.exists()) return new Response(f, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' } });

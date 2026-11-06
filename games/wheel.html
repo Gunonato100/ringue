@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0910">
+<title>Wheel of Dares</title>
+</head><body>
+<script src="/games/kit.js"></script>
+<script>
+const K = Kit, S = K.canvas(), ctx = S.ctx;
+const DEFAULT = ['10 push-ups', 'Sing a chorus', 'Talk in an accent for 2 min', 'Dance for 15 seconds', 'Shout out the top gifter', 'Speak only in rhymes for 1 min', 'Best animal impression', 'Tell a funny story', 'Gifter picks the dare', '🎉 JACKPOT: chat picks!'];
+const SEG = ['#ff2e7e', '#ff8a3d', '#ffb547', '#9b7bff', '#3d8bff', '#5be38f'];
+const G = { dares: K.store.get('dares', DEFAULT), meter: 0, need: K.store.get('need', 10), likes: 0, likeNeed: 1500, angle: 0, vel: 0, spinning: false, queue: [], by: null, result: null, resultT: 0, history: [], tick: 0 };
+function spin(u, reason) { G.queue.push({ u, reason }); }
+function startSpin() { const q = G.queue.shift(); G.by = q; G.spinning = true; G.vel = 9 + Math.random() * 5; G.result = null; K.sfx.whoosh(); K.banner('SPIN!', q.u ? `@${q.u.nick} ${q.reason}` : q.reason, '#ffb547', 1300); }
+function onEvent(e) {
+  if (e.type === 'gift') {
+    G.meter += e.gift.total; K.toast(e.u, `${e.gift.name} → +${e.gift.total} spin power`, '#ffb547', e.gift.pic); K.sfx.gift();
+    let n = 0; while (G.meter >= G.need && n < 3) { G.meter -= G.need; n++; if (G.queue.length < 6) spin(e.u, 'spun the wheel!'); } if (G.meter >= G.need) G.meter = G.need - 1;
+  } else if (e.type === 'like') { G.likes += e.count; if (G.likes >= G.likeNeed) { G.likes -= G.likeNeed; spin(null, 'LIKES unlocked a FREE SPIN ❤️'); } }
+  else if (e.type === 'follow') K.toast(e.u, 'followed!', '#5be38f');
+}
+function demo() { const r = Math.random(); if (r < 0.5) return K.demoLike(); if (r < 0.8) return K.demoGift(); return K.demoChat('spin it!!'); }
+function draw(dt, T) {
+  const W = S.W, H = S.H, u = S.u;
+  const g = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, H * 0.7); g.addColorStop(0, '#2a1336'); g.addColorStop(1, '#0b0910'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // bulbs ring
+  const cx = W / 2, cy = H * 0.5, R = Math.min(W * 0.42, H * 0.27), n = G.dares.length, seg = Math.PI * 2 / n;
+  for (let i = 0; i < 36; i++) { const a = i / 36 * Math.PI * 2, on = (Math.floor(T * (G.spinning ? 14 : 3)) + i) % 2; ctx.fillStyle = on ? '#ffe9b0' : '#5a3a20'; ctx.shadowColor = '#ffb547'; ctx.shadowBlur = on ? 12 : 0; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * (R + 16 * u), cy + Math.sin(a) * (R + 16 * u), 4.5 * u, 0, 7); ctx.fill(); } ctx.shadowBlur = 0;
+  ctx.fillStyle = '#1a0f24'; ctx.beginPath(); ctx.arc(cx, cy, R + 8 * u, 0, 7); ctx.fill();
+  // wheel
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(G.angle);
+  for (let i = 0; i < n; i++) {
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, i * seg, (i + 1) * seg); ctx.closePath(); ctx.fillStyle = SEG[i % SEG.length]; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save(); ctx.rotate(i * seg + seg / 2); ctx.translate(R * 0.58, 0);
+    ctx.fillStyle = '#1a0610'; ctx.font = `800 ${Math.max(9, 11 * u)}px Inter, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const words = G.dares[i].split(' '), lines = []; let line = ''; for (const w of words) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > R * 0.56) { lines.push(line); line = w; } else line = t; } lines.push(line);
+    lines.slice(0, 3).forEach((l, k) => ctx.fillText(l, 0, (k - (Math.min(3, lines.length) - 1) / 2) * 13 * u));
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.fillStyle = '#fbf7f4'; ctx.beginPath(); ctx.arc(cx, cy, 30 * u, 0, 7); ctx.fill(); K.text(ctx, 'SPIN', cx, cy + 2 * u, 22 * u, '#1a0610');
+  // pointer
+  ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.moveTo(cx, cy - R + 18 * u); ctx.lineTo(cx - 16 * u, cy - R - 22 * u); ctx.lineTo(cx + 16 * u, cy - R - 22 * u); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+  // header
+  K.text(ctx, '🎡 WHEEL OF DARES', W / 2, 36 * u, 38 * u, '#fff', 'center', 'teko', W - 30 * u);
+  K.text(ctx, 'GIFTS SPIN THE WHEEL · THE HOST DOES THE DARE', W / 2, 62 * u, 11 * u, '#ffb547', 'center', 'inter', W - 30 * u);
+  // meters
+  const mw = W - 60 * u, mx = 30 * u;
+  [['🎁 SPIN POWER', G.meter / G.need, `${G.meter}/${G.need} coins`, '#ffb547', 84 * u], ['❤️ FREE SPIN', G.likes / G.likeNeed, `${G.likes}/${G.likeNeed} likes`, '#ff2e7e', 120 * u]].forEach(([lb, f, v, c, y]) => {
+    K.text(ctx, lb, mx, y, 15 * u, '#fff', 'left'); K.text(ctx, v, mx + mw, y, 12 * u, c, 'right', 'inter');
+    K.rrect(ctx, mx, y + 10 * u, mw, 9 * u, 5 * u); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill(); K.rrect(ctx, mx, y + 10 * u, Math.max(9 * u, mw * Math.min(1, f)), 9 * u, 5 * u); ctx.fillStyle = c; ctx.fill();
+  });
+  if (G.queue.length) K.text(ctx, `+${G.queue.length} SPIN${G.queue.length > 1 ? 'S' : ''} QUEUED`, W / 2, 152 * u, 13 * u, '#5be38f', 'center', 'inter');
+  // result card
+  if (G.result) {
+    const a = Math.min(1, G.resultT * 4), y = cy + R + 60 * u; ctx.save(); ctx.translate(W / 2, y); ctx.scale(0.6 + 0.4 * a, 0.6 + 0.4 * a); ctx.globalAlpha = a;
+    const cw = W - 30 * u; K.rrect(ctx, -cw / 2, -42 * u, cw, 84 * u, 18 * u); ctx.fillStyle = 'rgba(11,9,16,.9)'; ctx.fill(); ctx.strokeStyle = '#ffb547'; ctx.lineWidth = 3 * u; ctx.stroke();
+    K.text(ctx, 'HOST MUST:', 0, -20 * u, 16 * u, '#ffb547'); K.text(ctx, G.result.toUpperCase(), 0, 12 * u, 30 * u, '#fff', 'center', 'teko', cw - 24 * u);
+    ctx.restore();
+    if (G.by && G.by.u) { K.drawAvatar(ctx, W / 2, y - 66 * u, 16 * u, G.by.u, '#ffb547'); }
+  }
+  // history
+  const hy = H * 0.9; G.history.slice(0, 3).forEach((h, i) => K.text(ctx, `✓ ${h}`, W / 2, hy + i * 16 * u, 11 * u, 'rgba(255,255,255,' + (0.7 - i * 0.2) + ')', 'center', 'inter', W - 30 * u));
+}
+K.loop((dt, T) => {
+  if (G.spinning) {
+    const before = Math.floor((G.angle) / (Math.PI * 2 / G.dares.length));
+    G.angle += G.vel * dt; G.vel *= Math.pow(0.55, dt); if (G.vel < 0.9) G.vel -= dt * 0.6;
+    const after = Math.floor(G.angle / (Math.PI * 2 / G.dares.length)); if (after !== before) K.sfx.tick();
+    if (G.vel <= 0.02) {
+      G.spinning = false; const n = G.dares.length, seg = Math.PI * 2 / n;
+      const a = ((-Math.PI / 2 - G.angle) % (Math.PI * 2) + Math.PI * 4) % (Math.PI * 2), idx = Math.floor(a / seg) % n;
+      G.result = G.dares[idx]; G.resultT = 0; G.history.unshift(G.result); K.sfx.win(); K.confetti(S.W / 2, S.H * 0.45, 160); G.cool = 6;
+    }
+  } else { G.resultT += dt; if (G.cool > 0) G.cool -= dt; else if (G.queue.length) startSpin(); }
+  draw(dt, T);
+});
+K.start({
+  title: 'WHEEL OF DARES', desc: 'Viewers fill the spin meter with gifts. When it is full the wheel spins and you, the host, do the dare live. Likes unlock free spins too. You can edit the dares below.',
+  rules: ['🎁 Gifts fill the SPIN POWER meter', '❤️ Every 1,500 likes = free spin', 'You do the dare on camera'],
+  options: `<label for="dares">Dares (one per line)</label><textarea id="dares" rows="6" style="width:100%;box-sizing:border-box;background:#0b0910;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;font:14px Inter,sans-serif"></textarea>
+    <label for="need">Coins per spin</label><select id="need"><option>1</option><option>5</option><option selected>10</option><option>30</option><option>100</option></select>`,
+  onOptions(el) {
+    const lines = el.querySelector('#dares').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 16); if (lines.length >= 4) { G.dares = lines; K.store.set('dares', lines); }
+    G.need = +el.querySelector('#need').value || 10; K.store.set('need', G.need);
+  },
+  tips: [['🎁 SEND GIFTS', 'TO SPIN THE WHEEL', '#ffb547'], ['❤️ 1,500 LIKES', '= FREE SPIN', '#ff2e7e'], ['THE HOST', 'MUST DO THE DARE 😈', '#9b7bff']],
+  onEvent, demo, demoEvery: 500, feedTop: 0.2, feedMax: 1, tipBottom: 0.005,
+});
+setTimeout(() => { const ta = document.getElementById('dares'); if (ta) ta.value = G.dares.join('\n'); const nd = document.getElementById('need'); if (nd) nd.value = String(G.need); }, 0);
+</script>
+</body></html>

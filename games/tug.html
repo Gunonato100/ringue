@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0910">
+<title>Tug of War</title>
+</head><body>
+<script src="/games/kit.js"></script>
+<script>
+const K = Kit, S = K.canvas(), ctx = S.ctx;
+const TEAM = [{ name: 'RED', col: '#ff2e5e', dark: '#7a0f2a', key: ['red', '1', 'vermelho', 'rojo', '🔴', '❤️'] }, { name: 'BLUE', col: '#3d8bff', dark: '#0f2f7a', key: ['blue', '2', 'azul', '🔵', '💙'] }];
+const G = { p: 0, v: 0, wins: [0, 0], members: new Map(), pts: [new Map(), new Map()], phase: 'play', t: 0, round: 1, shake: 0, strain: [0, 0], pulseT: [0, 0], winner: -1 };
+function teamOf(u) { return G.members.get(u.uid); }
+function join(u, side, quiet) { if (G.members.get(u.uid) === side) return; G.members.set(u.uid, side); if (!quiet) K.toast(u, `joined TEAM ${TEAM[side].name}`, TEAM[side].col); }
+function count(side) { let n = 0; for (const s of G.members.values()) if (s === side) n++; return n; }
+function pull(side, amt, u) {
+  if (G.phase !== 'play') return;
+  G.v += (side === 0 ? -1 : 1) * amt * 0.9; G.strain[side] = Math.min(1, G.strain[side] + amt * 0.05); G.pulseT[side] = 1;
+  if (u) { const m = G.pts[side]; const e = m.get(u.uid) || { u, v: 0 }; e.v += amt; e.u = u; m.set(u.uid, e); }
+}
+function detectSide(t) { const s = t.toLowerCase().trim(); for (let i = 0; i < 2; i++) for (const k of TEAM[i].key) { if (k.length <= 2 ? s === k || s.startsWith(k + ' ') : s.includes(k)) return i; } return -1; }
+function onEvent(e) {
+  if (e.type === 'chat') {
+    const d = detectSide(e.text); if (d >= 0) join(e.u, d);
+    let side = teamOf(e.u); if (side === undefined) { side = count(0) <= count(1) ? 0 : 1; join(e.u, side); }
+    pull(side, 1.2, e.u);
+  } else if (e.type === 'like') { const side = teamOf(e.u); if (side !== undefined) pull(side, Math.min(3, e.count * 0.06), e.u); }
+  else if (e.type === 'gift') {
+    let side = teamOf(e.u); const nm = e.gift.name.toLowerCase();
+    if (side === undefined) { side = nm.includes('rose') ? 0 : nm.includes('tiktok') ? 1 : (count(0) <= count(1) ? 0 : 1); join(e.u, side, true); }
+    const amt = Math.min(60, 5 * Math.sqrt(e.gift.total) + 3);
+    pull(side, amt, e.u); K.sfx.gift(); if (amt > 15) { G.shake = 0.6; K.sfx.boom(); K.banner('MEGA PULL!', `@${e.u.nick} → TEAM ${TEAM[side].name}`, TEAM[side].col, 1400); }
+    K.toast(e.u, `${e.gift.count > 1 ? e.gift.count + 'x ' : ''}${e.gift.name} → TEAM ${TEAM[side].name} +${Math.round(amt)}`, TEAM[side].col, e.gift.pic);
+  } else if (e.type === 'follow' || e.type === 'share') { const side = teamOf(e.u); if (side !== undefined) pull(side, 4, e.u); }
+}
+function demo() { const r = Math.random(); if (r < 0.55) return K.demoChat(K.pick(['red!', 'BLUE', 'go red', '2', '1', 'pull!!', 'blue team 💙', 'lets gooo'])); if (r < 0.85) return K.demoLike(); return K.demoGift(); }
+function endRound(w) {
+  G.phase = 'win'; G.t = 0; G.winner = w; G.wins[w]++; K.sfx.win(); K.sfx.cheer();
+  K.banner(`TEAM ${TEAM[w].name} WINS!`, `Round ${G.round} · ${G.wins[0]} - ${G.wins[1]}`, TEAM[w].col, 3500);
+  K.confetti(S.W / 2, S.H * 0.45, 220, 1.2);
+}
+// ---------- drawing ----------
+function person(x, y, s, lean, col, u, flip, t, ph) {
+  // little puller: body leaning back, legs braced, avatar head
+  ctx.save(); ctx.translate(x, y); ctx.scale(flip ? -1 : 1, 1); ctx.rotate(lean);
+  const step = Math.sin(t * 10 + ph) * 3 * s;
+  ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineWidth = 7 * s;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-10 * s + step, 30 * s); ctx.moveTo(0, 0); ctx.lineTo(10 * s - step, 30 * s); ctx.stroke();
+  ctx.lineWidth = 12 * s; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -32 * s); ctx.stroke();
+  ctx.lineWidth = 6 * s; ctx.beginPath(); ctx.moveTo(0, -24 * s); ctx.lineTo(22 * s, -14 * s); ctx.stroke();
+  ctx.restore();
+  const hx = x + (flip ? 1 : -1) * Math.sin(lean) * 44 * s, hy = y - Math.cos(lean) * 44 * s;
+  K.drawAvatar(ctx, hx, hy, 11 * s, u, col);
+}
+const STARS = Array.from({ length: 70 }, () => [Math.random(), Math.random() * 0.55, Math.random() * 1.5 + 0.3]);
+function draw(dt, T) {
+  const W = S.W, H = S.H, u = S.u;
+  const shx = (Math.random() - 0.5) * G.shake * 14, shy = (Math.random() - 0.5) * G.shake * 10;
+  ctx.save(); ctx.translate(shx, shy);
+  // sky / arena
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#120c1c'); g.addColorStop(0.55, '#1d1029'); g.addColorStop(1, '#0b0910'); ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
+  for (const [sx, sy, r] of STARS) { ctx.globalAlpha = 0.4 + 0.4 * Math.sin(T * 2 + sx * 20); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * W, sy * H, r, 0, 7); ctx.fill(); } ctx.globalAlpha = 1;
+  // team glows
+  const lead = G.p / 100;
+  for (let i = 0; i < 2; i++) { const rg = ctx.createRadialGradient(i ? W : 0, H * 0.55, 0, i ? W : 0, H * 0.55, W * 0.9); rg.addColorStop(0, TEAM[i].col + (i === 0 ? (lead < 0 ? '66' : '33') : (lead > 0 ? '66' : '33'))); rg.addColorStop(1, 'transparent'); ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H); }
+  // ground + mud pit
+  const gy = H * 0.62;
+  ctx.fillStyle = '#21182b'; ctx.fillRect(-20, gy, W + 40, H - gy + 20);
+  ctx.fillStyle = '#3a2618'; ctx.beginPath(); ctx.ellipse(W / 2, gy + 8 * u, 70 * u, 14 * u, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#5a3a22'; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(W / 2 + Math.sin(T * 2 + i) * 50 * u, gy + 8 * u + Math.cos(T * 3 + i) * 5 * u, 5 * u, 0, 7); ctx.fill(); }
+  K.text(ctx, '⚠ MUD ⚠', W / 2, gy + 32 * u, 14 * u, '#8a6a4a');
+  // finish lines
+  for (let i = 0; i < 2; i++) { const fx = i ? W * 0.86 : W * 0.14; ctx.strokeStyle = TEAM[i].col; ctx.setLineDash([8 * u, 6 * u]); ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.moveTo(fx, gy - 120 * u); ctx.lineTo(fx, gy + 40 * u); ctx.stroke(); ctx.setLineDash([]); }
+  // rope
+  const off = (G.p / 100) * W * 0.36, ry = gy - 34 * u;
+  ctx.strokeStyle = '#d9b77a'; ctx.lineWidth = 7 * u; ctx.beginPath(); ctx.moveTo(-10, ry + Math.sin(T * 14) * G.v * 0.02); ctx.lineTo(W + 10, ry - Math.sin(T * 14) * G.v * 0.02); ctx.stroke();
+  ctx.strokeStyle = '#a8864f'; ctx.lineWidth = 2 * u; ctx.setLineDash([6 * u, 8 * u]); ctx.lineDashOffset = -off; ctx.beginPath(); ctx.moveTo(-10, ry); ctx.lineTo(W + 10, ry); ctx.stroke(); ctx.setLineDash([]);
+  // center flag
+  const cx = W / 2 + off;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.moveTo(cx, ry); ctx.lineTo(cx, ry + 40 * u); ctx.stroke();
+  ctx.fillStyle = Math.abs(G.p) < 5 ? '#fff' : TEAM[G.p < 0 ? 0 : 1].col; ctx.beginPath(); ctx.moveTo(cx, ry + 18 * u); ctx.lineTo(cx + 22 * u, ry + 28 * u); ctx.lineTo(cx, ry + 38 * u); ctx.fill();
+  // pullers (top 5 per team)
+  for (let i = 0; i < 2; i++) {
+    const tops = [...G.pts[i].values()].sort((a, b) => b.v - a.v).slice(0, 5);
+    while (tops.length < 5) tops.push({ u: { uid: 'npc' + i + tops.length, nick: TEAM[i].name }, v: 0, npc: true });
+    const strain = G.strain[i], winning = (i === 0 ? G.p < 0 : G.p > 0);
+    tops.forEach((m, k) => {
+      const dir = i === 0 ? -1 : 1, x = W / 2 + off + dir * (62 + k * 34) * u, s = (k === 0 ? 1.4 : 1.2) * u;
+      const lean = 0.35 + strain * 0.35 + (winning ? 0.1 : -0.05);
+      person(x, gy - 30 * u, s, lean, TEAM[i].col, m.u, i === 1, T, k);
+    });
+  }
+  ctx.restore();
+  // ---------- HUD ----------
+  const top = 18 * u + (window.visualViewport ? 0 : 0);
+  K.text(ctx, '🪢 TUG OF WAR', W / 2, top + 22 * u, 40 * u, '#fff');
+  // score pills
+  for (let i = 0; i < 2; i++) {
+    const x = i ? W - 16 * u : 16 * u, al = i ? 'right' : 'left', y = top + 62 * u;
+    K.rrect(ctx, i ? W - 166 * u : 16 * u, y - 18 * u, 150 * u, 50 * u, 14 * u); ctx.fillStyle = TEAM[i].dark + 'cc'; ctx.fill(); ctx.strokeStyle = TEAM[i].col; ctx.lineWidth = 2 * u; ctx.stroke();
+    K.text(ctx, `TEAM ${TEAM[i].name}`, i ? W - 91 * u : 91 * u, y - 2 * u, 22 * u, '#fff');
+    K.text(ctx, `🏆 ${G.wins[i]}   👥 ${count(i)}`, i ? W - 91 * u : 91 * u, y + 20 * u, 12 * u, '#fff', 'center', 'inter');
+    if (G.pulseT[i] > 0) { ctx.globalAlpha = G.pulseT[i]; K.rrect(ctx, i ? W - 166 * u : 16 * u, y - 18 * u, 150 * u, 50 * u, 14 * u); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * u; ctx.stroke(); ctx.globalAlpha = 1; }
+  }
+  // power meter
+  const my = top + 104 * u, mw = W - 32 * u; K.rrect(ctx, 16 * u, my, mw, 14 * u, 7 * u); ctx.fillStyle = TEAM[1].col; ctx.fill();
+  const split = 16 * u + mw * (0.5 - G.p / 200); K.rrect(ctx, 16 * u, my, Math.max(14 * u, split - 16 * u), 14 * u, 7 * u); ctx.fillStyle = TEAM[0].col; ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(split, my + 7 * u, 10 * u, 0, 7); ctx.fill(); K.text(ctx, '⚔️', split, my + 8 * u, 11 * u, '#000', 'center', 'emoji');
+  // top pullers boards
+  for (let i = 0; i < 2; i++) {
+    const rows = [...G.pts[i].values()].sort((a, b) => b.v - a.v).slice(0, 3).map(r => ({ u: r.u, v: Math.round(r.v) }));
+    if (rows.length) K.board(ctx, S, rows, i ? W - 176 * u : 10 * u, H * 0.665, 166 * u, `TOP ${TEAM[i].name}`, TEAM[i].col);
+  }
+}
+K.loop((dt, T) => {
+  if (G.phase === 'play') {
+    G.v *= Math.pow(0.15, dt); G.p += G.v * dt * 3; G.p = Math.max(-100, Math.min(100, G.p));
+    if (Math.abs(G.p) >= 100) endRound(G.p < 0 ? 0 : 1);
+  } else { G.t += dt; if (G.t > 5) { G.phase = 'play'; G.p = 0; G.v = 0; G.round++; G.pts = [new Map(), new Map()]; K.banner(`ROUND ${G.round}`, 'COMMENT RED OR BLUE!', '#ffb547', 1500); K.sfx.whoosh(); } }
+  for (let i = 0; i < 2; i++) { G.strain[i] = Math.max(0, G.strain[i] - dt * 0.6); G.pulseT[i] = Math.max(0, G.pulseT[i] - dt * 3); }
+  G.shake = Math.max(0, G.shake - dt * 1.5);
+  draw(dt, T);
+});
+K.start({
+  title: 'TUG OF WAR', desc: 'Two teams, one rope. Your viewers pick a side and every comment, like and gift pulls the rope. Drag the other team into the mud to win the round.',
+  rules: ['Comment <b>RED</b> or <b>BLUE</b> to pick a team', 'Every comment = one pull', '❤️ Likes = small pulls', '🎁 Gifts = MEGA pulls (🌹 Rose helps red, TikTok helps blue)'],
+  tips: [['PICK A TEAM', 'COMMENT RED OR BLUE', '#ff2e5e'], ['EVERY COMMENT', '= ONE PULL 💪', '#3d8bff'], ['🎁 GIFTS =', 'MEGA PULL', '#ffb547'], ['❤️ TAP LIKES', 'TO HELP YOUR TEAM', '#ff2e7e']],
+  onEvent, demo, demoEvery: 420, feedTop: 0.165, onStart() { K.banner('ROUND 1', 'COMMENT RED OR BLUE!', '#ffb547', 1600); },
+});
+</script>
+</body></html>

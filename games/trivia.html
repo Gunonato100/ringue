@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0910">
+<title>Trivia Blitz</title>
+</head><body>
+<script src="/games/kit.js"></script>
+<script>
+const K = Kit, S = K.canvas(), ctx = S.ctx;
+// [question, [A, B, C, D], correctIndex]
+const QS = [
+  ['How many states are in the USA?', ['48', '50', '52', '51'], 1], ['What is the largest planet?', ['Saturn', 'Earth', 'Jupiter', 'Neptune'], 2],
+  ['Which animal is the fastest on land?', ['Lion', 'Cheetah', 'Horse', 'Greyhound'], 1], ['How many legs does a spider have?', ['6', '8', '10', '12'], 1],
+  ['What color do you get mixing blue and yellow?', ['Green', 'Purple', 'Orange', 'Brown'], 0], ['Which ocean is the biggest?', ['Atlantic', 'Indian', 'Arctic', 'Pacific'], 3],
+  ['What is the capital of France?', ['Lyon', 'Paris', 'Nice', 'Marseille'], 1], ['How many minutes are in an hour?', ['60', '100', '30', '90'], 0],
+  ['Which planet is known as the Red Planet?', ['Venus', 'Mars', 'Mercury', 'Jupiter'], 1], ['What do bees make?', ['Milk', 'Silk', 'Honey', 'Wax only'], 2],
+  ['Which sport uses a puck?', ['Soccer', 'Hockey', 'Tennis', 'Golf'], 1], ['How many sides does a hexagon have?', ['5', '6', '7', '8'], 1],
+  ['What is frozen water called?', ['Steam', 'Ice', 'Fog', 'Dew'], 1], ['Which is the tallest animal?', ['Elephant', 'Giraffe', 'Camel', 'Moose'], 1],
+  ['What is the capital of Japan?', ['Osaka', 'Kyoto', 'Tokyo', 'Seoul'], 2], ['Which US state is called the Sunshine State?', ['California', 'Texas', 'Florida', 'Hawaii'], 2],
+  ['How many players are on a soccer team on the field?', ['9', '10', '11', '12'], 2], ['What gas do plants breathe in?', ['Oxygen', 'Carbon dioxide', 'Helium', 'Nitrogen'], 1],
+  ['Which is the smallest prime number?', ['0', '1', '2', '3'], 2], ['What is the largest mammal?', ['Elephant', 'Blue whale', 'Orca', 'Hippo'], 1],
+  ['What is 7 × 8?', ['54', '56', '64', '48'], 1], ['Which country gave the Statue of Liberty to the USA?', ['England', 'Spain', 'France', 'Italy'], 2],
+  ['How many continents are there?', ['5', '6', '7', '8'], 2], ['Which instrument has 88 keys?', ['Guitar', 'Piano', 'Violin', 'Drums'], 1],
+  ['What is the hottest planet in our solar system?', ['Mercury', 'Venus', 'Mars', 'Sun'], 1], ['Which bird is a symbol of the USA?', ['Hawk', 'Bald eagle', 'Owl', 'Turkey'], 1],
+  ['What is the main ingredient in guacamole?', ['Tomato', 'Avocado', 'Lime', 'Pepper'], 1], ['How many hearts does an octopus have?', ['1', '2', '3', '4'], 2],
+  ['Which is NOT a primary color?', ['Red', 'Blue', 'Green', 'Yellow'], 2], ['What is the capital of Canada?', ['Toronto', 'Ottawa', 'Vancouver', 'Montreal'], 1],
+  ['In which sport do you score a touchdown?', ['Baseball', 'Basketball', 'American football', 'Rugby only'], 2], ['Which shape has 3 sides?', ['Square', 'Triangle', 'Circle', 'Pentagon'], 1],
+  ['What is the boiling point of water in °F?', ['100', '180', '212', '232'], 2], ['Who painted the Mona Lisa?', ['Van Gogh', 'Picasso', 'Da Vinci', 'Monet'], 2],
+  ['How many days are in a leap year?', ['364', '365', '366', '367'], 2], ['Which is the largest desert in the world?', ['Sahara', 'Antarctica', 'Gobi', 'Arabian'], 1],
+  ['What is the currency of the UK?', ['Euro', 'Dollar', 'Pound', 'Franc'], 2], ['Which fruit keeps the doctor away?', ['Banana', 'Apple', 'Orange', 'Grape'], 1],
+  ['What is the largest country by area?', ['Canada', 'China', 'USA', 'Russia'], 3], ['Which month has 28 days in common years?', ['January', 'February', 'April', 'June'], 1],
+  ['What is the longest river in the world?', ['Amazon', 'Nile', 'Mississippi', 'Yangtze'], 1], ['How many strings does a standard guitar have?', ['4', '5', '6', '7'], 2],
+  ['Which planet has the most famous rings?', ['Uranus', 'Saturn', 'Neptune', 'Mars'], 1], ['What is the capital of Italy?', ['Milan', 'Venice', 'Rome', 'Naples'], 2],
+  ['How many zeros are in one million?', ['5', '6', '7', '9'], 1], ['Which animal is known as the king of the jungle?', ['Tiger', 'Lion', 'Gorilla', 'Bear'], 1],
+];
+const COL = ['#ff2e7e', '#3d8bff', '#ffb547', '#5be38f'], LET = ['A', 'B', 'C', 'D'];
+const G = { order: [], qi: -1, q: null, phase: 'intro', t: 0, dur: 18, votes: new Map(), first: [], score: new Map(), removed: new Set(), mult: new Map(), streak: new Map(), round: 0, lastWinners: [] };
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function nextQ() {
+  if (!G.order.length) G.order = shuffle(QS.map((_, i) => i));
+  G.qi = G.order.pop(); G.q = QS[G.qi]; G.phase = 'ask'; G.t = 0; G.votes = new Map(); G.first = []; G.removed = new Set(); G.mult = new Map(); G.round++;
+  K.sfx.whoosh(); K.showTip('TYPE A, B, C OR D', 'IN THE CHAT ⌨️', '#ffb547', 3000);
+}
+function parseAns(t) {
+  const s = t.trim().toLowerCase(); if (!s) return -1;
+  const m = s.match(/^([abcd1-4])(\b|$|[^a-z])/); if (m) { const c = m[1]; return '1234'.includes(c) ? +c - 1 : 'abcd'.indexOf(c); }
+  for (let i = 0; i < 4; i++) if (s === G.q[1][i].toLowerCase()) return i;
+  return -1;
+}
+function addScore(u, v) { const e = G.score.get(u.uid) || { u, v: 0 }; e.v += v; e.u = u; G.score.set(u.uid, e); }
+function onEvent(e) {
+  if (e.type === 'chat' && G.phase === 'ask') {
+    const a = parseAns(e.text); if (a < 0 || G.removed.has(a) || G.votes.has(e.u.uid)) return;
+    G.votes.set(e.u.uid, { a, t: G.t, u: e.u }); K.sfx.tick();
+  } else if (e.type === 'gift') {
+    const mult = e.gift.total >= 20 ? 3 : 2; G.mult.set(e.u.uid, Math.max(G.mult.get(e.u.uid) || 1, mult)); addScore(e.u, Math.min(100, 5 * e.gift.total));
+    K.toast(e.u, `${e.gift.name} → x${mult} POINTS this question`, '#ffb547', e.gift.pic); K.sfx.gift();
+    if (G.phase === 'ask' && e.gift.total >= 5 && G.removed.size === 0) {
+      const wrong = [0, 1, 2, 3].filter(i => i !== G.q[2]); shuffle(wrong); G.removed.add(wrong[0]); G.removed.add(wrong[1]);
+      K.banner('50 / 50!', `@${e.u.nick} removed 2 wrong answers`, '#ffb547', 1600); K.sfx.boom();
+      for (const [k, v] of G.votes) if (G.removed.has(v.a)) G.votes.delete(k);
+    }
+  } else if (e.type === 'like' && G.phase === 'ask') { G.dur = Math.min(G.dur, 18); }
+  else if (e.type === 'follow') K.toast(e.u, 'followed! +50 bonus', '#5be38f'), addScore(e.u, 50);
+}
+function reveal() {
+  G.phase = 'reveal'; G.t = 0; const c = G.q[2];
+  const right = [...G.votes.values()].filter(v => v.a === c).sort((a, b) => a.t - b.t);
+  right.forEach((v, i) => { const base = Math.max(20, Math.round(100 - v.t * 4)) + (i === 0 ? 50 : 0); const pts = base * (G.mult.get(v.u.uid) || 1); addScore(v.u, pts); v.pts = pts; G.streak.set(v.u.uid, (G.streak.get(v.u.uid) || 0) + 1); });
+  for (const v of G.votes.values()) if (v.a !== c) G.streak.set(v.u.uid, 0);
+  G.lastWinners = right.slice(0, 3);
+  if (right.length) { K.sfx.win(); K.confetti(S.W / 2, S.H * 0.35, 90); } else K.sfx.wrong();
+}
+function demo() {
+  if (G.phase !== 'ask') return Math.random() < 0.15 ? K.demoLike() : null;
+  if (Math.random() < 0.08) return K.demoGift();
+  const smart = Math.random() < 0.55, a = smart ? G.q[2] : Math.floor(Math.random() * 4);
+  return K.demoChat(K.pick([LET[a], LET[a].toLowerCase(), String(a + 1), LET[a] + '!!']));
+}
+// ---------- draw ----------
+function draw(dt, T) {
+  const W = S.W, H = S.H, u = S.u;
+  const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1a0f24'); g.addColorStop(1, '#0b0910'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // animated rays
+  ctx.save(); ctx.translate(W / 2, H * 0.3); ctx.rotate(T * 0.08);
+  for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.fillStyle = i % 2 ? 'rgba(255,46,126,.05)' : 'rgba(255,181,71,.04)'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * 1.2, -60 * u); ctx.lineTo(W * 1.2, 60 * u); ctx.fill(); }
+  ctx.restore();
+  K.text(ctx, '🧠 TRIVIA BLITZ', W / 2, 40 * u, 40 * u, '#fff');
+  K.text(ctx, `QUESTION ${G.round} · ${G.votes.size} ANSWERS`, W / 2, 68 * u, 12 * u, '#ffb547', 'center', 'inter');
+  if (!G.q) { K.text(ctx, 'GET READY…', W / 2, H * 0.35, 44 * u, '#fff'); return; }
+  // timer ring
+  const left = Math.max(0, G.dur - G.t), cy = 118 * u;
+  ctx.lineWidth = 7 * u; ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(W / 2, cy, 26 * u, 0, 7); ctx.stroke();
+  if (G.phase === 'ask') { ctx.strokeStyle = left < 5 ? '#ff2e5e' : '#ffb547'; ctx.beginPath(); ctx.arc(W / 2, cy, 26 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / G.dur)); ctx.stroke(); }
+  K.text(ctx, G.phase === 'ask' ? String(Math.ceil(left)) : '✓', W / 2, cy + 2 * u, 30 * u, left < 5 && G.phase === 'ask' ? '#ff2e5e' : '#fff');
+  // question card
+  const qy = 160 * u, qw = W - 28 * u, qh = 108 * u, pop = Math.min(1, G.t * 4);
+  ctx.save(); ctx.translate(W / 2, qy + qh / 2); ctx.scale(G.phase === 'ask' ? 0.85 + 0.15 * pop : 1, G.phase === 'ask' ? 0.85 + 0.15 * pop : 1);
+  K.rrect(ctx, -qw / 2, -qh / 2, qw, qh, 18 * u); ctx.fillStyle = '#fbf7f4'; ctx.fill();
+  ctx.fillStyle = '#1a0f24'; ctx.font = `800 ${21 * u}px Inter, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const words = G.q[0].split(' '), lines = []; let line = '';
+  for (const w of words) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > qw - 36 * u) { lines.push(line); line = w; } else line = t; } lines.push(line);
+  lines.forEach((l, i) => ctx.fillText(l, 0, (i - (lines.length - 1) / 2) * 26 * u));
+  ctx.restore();
+  // answers with live vote bars
+  const counts = [0, 0, 0, 0]; for (const v of G.votes.values()) counts[v.a]++; const tot = Math.max(1, G.votes.size);
+  for (let i = 0; i < 4; i++) {
+    const ay = qy + qh + 16 * u + i * 62 * u, aw = W - 28 * u, ah = 52 * u, x = 14 * u;
+    const correct = G.phase === 'reveal' && i === G.q[2], wrong = G.phase === 'reveal' && i !== G.q[2], gone = G.removed.has(i);
+    ctx.globalAlpha = gone ? 0.18 : wrong ? 0.4 : 1;
+    K.rrect(ctx, x, ay, aw, ah, 14 * u); ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fill();
+    const fw = aw * counts[i] / tot; if (fw > 2) { K.rrect(ctx, x, ay, Math.max(28 * u, fw), ah, 14 * u); ctx.fillStyle = COL[i] + '55'; ctx.fill(); }
+    K.rrect(ctx, x, ay, aw, ah, 14 * u); ctx.lineWidth = correct ? 4 * u : 2 * u; ctx.strokeStyle = correct ? '#5be38f' : COL[i]; ctx.stroke();
+    ctx.fillStyle = COL[i]; ctx.beginPath(); ctx.arc(x + 28 * u, ay + ah / 2, 17 * u, 0, 7); ctx.fill();
+    K.text(ctx, LET[i], x + 28 * u, ay + ah / 2 + 2 * u, 26 * u, '#fff');
+    K.text(ctx, G.q[1][i], x + 56 * u, ay + ah / 2 + 1 * u, 17 * u, '#fff', 'left', 'inter', aw - 130 * u);
+    K.text(ctx, Math.round(counts[i] / tot * 100) + '%', x + aw - 14 * u, ay + ah / 2 + 2 * u, 22 * u, '#fff', 'right');
+    if (correct) K.text(ctx, '✅', x + aw - 62 * u, ay + ah / 2, 20 * u, '#fff', 'center', 'emoji');
+    ctx.globalAlpha = 1;
+  }
+  // reveal: fastest correct
+  const by = qy + qh + 16 * u + 4 * 62 * u + 8 * u;
+  if (G.phase === 'reveal') {
+    if (G.lastWinners.length) {
+      K.text(ctx, '⚡ FASTEST CORRECT', W / 2, by + 6 * u, 18 * u, '#5be38f');
+      G.lastWinners.forEach((v, i) => { const x = W / 2 + (i - (G.lastWinners.length - 1) / 2) * 118 * u, y = by + 46 * u; K.drawAvatar(ctx, x, y, (i === 0 ? 22 : 17) * u, v.u, i === 0 ? '#ffb547' : '#fff'); if (i === 0) K.text(ctx, '👑', x, y - 32 * u, 20 * u, '#fff', 'center', 'emoji'); K.text(ctx, '@' + v.u.nick.slice(0, 12), x, y + 32 * u, 11 * u, '#fff', 'center', 'inter'); K.text(ctx, '+' + v.pts, x, y + 48 * u, 16 * u, '#ffb547'); });
+    } else K.text(ctx, 'NOBODY GOT IT! 😱', W / 2, by + 30 * u, 30 * u, '#ff2e5e');
+  } else {
+    // leaderboard
+    const rows = [...G.score.values()].sort((a, b) => b.v - a.v).slice(0, 3).map(r => ({ u: r.u, v: r.v }));
+    if (rows.length) K.board(ctx, S, rows, 14 * u, by, W - 28 * u, '🏆 LEADERBOARD', '#ffb547');
+  }
+}
+K.loop((dt, T) => {
+  if (G.phase !== 'intro') G.t += dt;
+  if (G.phase === 'ask' && G.t >= G.dur) reveal();
+  else if (G.phase === 'reveal' && G.t > 6) nextQ();
+  draw(dt, T);
+});
+K.start({
+  title: 'TRIVIA BLITZ', desc: 'A fast quiz your whole chat plays at once. Viewers answer by typing A, B, C or D. The fastest correct answers win the most points and climb the leaderboard.',
+  rules: ['Type <b>A, B, C or D</b> (or 1 to 4) to answer', 'Faster correct answers = more points', '🎁 Any gift = x2 points (big gifts x3)', '🎁 5+ coin gift = 50/50, removes two wrong answers'],
+  tips: [['TYPE A B C OR D', 'TO ANSWER ⌨️', '#ffb547'], ['FASTEST CORRECT', 'GETS THE CROWN 👑', '#5be38f'], ['🎁 GIFT =', 'DOUBLE POINTS', '#ff2e7e'], ['🎁 5+ COINS =', '50/50 FOR EVERYONE', '#3d8bff']],
+  onEvent, demo, demoEvery: 350, feedTop: 0.785, feedMax: 1, tipBottom: 0.01,
+  onStart() { K.banner('TRIVIA BLITZ', 'GET READY!', '#ffb547', 1500); setTimeout(nextQ, 1700); },
+});
+</script>
+</body></html>

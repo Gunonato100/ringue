@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b0910">
+<title>Tower Stack</title>
+</head><body>
+<script src="/games/kit.js"></script>
+<script>
+const K = Kit, S = K.canvas(), ctx = S.ctx;
+const HUES = ['#ff2e7e', '#ff5a6a', '#ff8a3d', '#ffb547', '#9b7bff', '#3d8bff', '#3dd6ff', '#5be38f'];
+const G = { blocks: [], falling: [], queue: [], cool: new Map(), dropT: 0, crane: 0, best: K.store.get('towerBest', 0), cam: 0, phase: 'build', t: 0, placed: new Map(), perfect: 0, T: 0 };
+let BW = 180, BH = 34;
+function reset() {
+  const u = S.u; BW = 190 * u; BH = 34 * u; G.blocks = [{ x: S.W / 2 - BW / 2, w: BW, y: 0, u: null, col: '#3a2e46', base: true }]; G.falling = []; G.phase = 'build'; G.t = 0; G.cam = 0; G.perfect = 0;
+}
+S.onResize = () => { if (!G.blocks.length) reset(); };
+reset();
+function craneX() { const top = G.blocks.length, sp = 1.4 + Math.min(1.6, top * 0.05), amp = S.W * 0.36; return S.W / 2 + Math.sin(G.T * sp) * amp; }
+function enqueue(u, gold) { if (G.queue.length > 10 && !gold) return; G.queue.push({ u, gold }); }
+function drop(item) {
+  const top = G.blocks[G.blocks.length - 1], w = top.w, cx = top.x + top.w / 2 + (craneX() - S.W / 2) * 0.15, x = cx - w / 2, y = top.y + BH, col = item.gold ? '#ffd27a' : HUES[G.blocks.length % HUES.length];
+  if (item.gold) { const nw = Math.min(BW, w * 1.35); G.blocks.push({ x: top.x + top.w / 2 - nw / 2, w: nw, y, u: item.u, col, gold: true }); G.perfect++; credit(item.u); K.sfx.gift(); K.banner('GOLDEN BLOCK!', `@${item.u.nick} fixed the tower`, '#ffb547', 1200); K.confetti(S.W / 2, S.H * 0.4, 70); return; }
+  const l = Math.max(x, top.x), r = Math.min(x + w, top.x + top.w);
+  if (r - l <= 0) { G.falling.push({ x, y, w, col, vy: 0, vx: (x < top.x ? -1 : 1) * 60, rot: 0, u: item.u }); K.sfx.wrong(); K.toast(item.u, 'missed the tower! 😬', '#ff5a6a'); collapseCheck(true); return; }
+  if (Math.abs(x - top.x) < 8 * S.u) { G.blocks.push({ x: top.x, w: top.w, y, u: item.u, col }); G.perfect++; credit(item.u); K.sfx.coin(); if (G.perfect % 3 === 0) K.banner('PERFECT x' + G.perfect, '@' + item.u.nick, '#5be38f', 900); return; }
+  G.perfect = 0;
+  const cut = x < top.x ? { x, w: top.x - x } : { x: top.x + top.w, w: x + w - (top.x + top.w) };
+  G.falling.push({ x: cut.x, y, w: cut.w, col, vy: 0, vx: (x < top.x ? -1 : 1) * 40, rot: 0 });
+  G.blocks.push({ x: l, w: r - l, y, u: item.u, col }); credit(item.u); K.sfx.hit();
+  collapseCheck(false);
+}
+function credit(u) { if (!u) return; const e = G.placed.get(u.uid) || { u, v: 0 }; e.v++; e.u = u; G.placed.set(u.uid, e); const h = G.blocks.length - 1; if (h > G.best) { G.best = h; K.store.set('towerBest', h); if (h % 5 === 0) K.sfx.win(); } }
+function collapseCheck(missed) {
+  const top = G.blocks[G.blocks.length - 1];
+  if (top.w < 14 * S.u || (missed && G.queue.length === 0 && G.blocks.length > 1 && Math.random() < 0)) {
+    G.phase = 'fall'; G.t = 0; const h = G.blocks.length - 1;
+    K.banner('TOWER DOWN!', `${h} floors · record ${G.best}`, '#ff2e7e', 3200); K.sfx.boom(); K.confetti(S.W / 2, S.H * 0.5, 160);
+    for (const b of G.blocks.slice(1)) G.falling.push({ ...b, vy: -Math.random() * 200, vx: (Math.random() - 0.5) * 300, rot: 0, spin: (Math.random() - 0.5) * 6 });
+    G.blocks = [G.blocks[0]];
+  }
+}
+function onEvent(e) {
+  if (e.type === 'chat') { const now = performance.now(); if (now - (G.cool.get(e.u.uid) || 0) < 3000) return; G.cool.set(e.u.uid, now); enqueue(e.u, false); }
+  else if (e.type === 'gift') { const n = Math.min(3, e.gift.count); for (let i = 0; i < n; i++) enqueue(e.u, true); K.toast(e.u, `${e.gift.name} → ${n} golden block${n > 1 ? 's' : ''} ✨`, '#ffb547', e.gift.pic); }
+  else if (e.type === 'like') { if (Math.random() < Math.min(0.4, e.count / 50)) enqueue(e.u, false); }
+  else if (e.type === 'follow') enqueue(e.u, true);
+}
+function demo() { const r = Math.random(); if (r < 0.75) return K.demoChat('drop'); if (r < 0.9) return K.demoLike(); return Math.random() < 0.5 ? K.demoGift() : null; }
+function block(b, yScreen) {
+  ctx.save(); K.rrect(ctx, b.x, yScreen - BH, b.w, BH - 2 * S.u, 6 * S.u); const g = ctx.createLinearGradient(0, yScreen - BH, 0, yScreen); g.addColorStop(0, b.col); g.addColorStop(1, shade(b.col)); ctx.fillStyle = g; ctx.fill();
+  if (b.gold) { ctx.shadowColor = '#ffb547'; ctx.shadowBlur = 16; ctx.strokeStyle = '#fff3d0'; ctx.lineWidth = 2; ctx.stroke(); ctx.shadowBlur = 0; }
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(b.x + 4, yScreen - BH + 3, Math.max(0, b.w - 8), 3);
+  if (b.u && b.w > 26 * S.u) { K.drawAvatar(ctx, b.x + 15 * S.u, yScreen - BH / 2 - 1, 10 * S.u, b.u, '#fff'); if (b.w > 90 * S.u) K.text(ctx, '@' + b.u.nick.slice(0, 12), b.x + 30 * S.u, yScreen - BH / 2, 11 * S.u, '#1a0610', 'left', 'inter', b.w - 40 * S.u); }
+  ctx.restore();
+}
+function shade(hex) { const n = parseInt(hex.slice(1), 16); const r = (n >> 16) * 0.7, g = ((n >> 8) & 255) * 0.7, b = (n & 255) * 0.7; return `rgb(${r | 0},${g | 0},${b | 0})`; }
+function draw(dt, T) {
+  const W = S.W, H = S.H, u = S.u, ground = H * 0.82;
+  const h = G.blocks.length, skyT = Math.min(1, h / 40);
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, skyT > 0.5 ? '#07061a' : '#1b1033'); g.addColorStop(1, '#2a1336'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // parallax city
+  for (let i = 0; i < 9; i++) { const bx = i * W / 8 - 20, bh = (60 + (i * 53) % 90) * u, by = ground + G.cam * 0.3; ctx.fillStyle = '#1a1226'; ctx.fillRect(bx, by - bh, W / 9, bh); ctx.fillStyle = 'rgba(255,181,71,.25)'; for (let k = 0; k < 4; k++) ctx.fillRect(bx + 8 + k * 9, by - bh + 10 + (k % 2) * 14, 4, 6); }
+  ctx.fillStyle = '#120c1a'; ctx.fillRect(0, ground + G.cam, W, H);
+  // blocks
+  for (const b of G.blocks) { const ys = ground - b.y + G.cam; if (ys > -BH && ys < H + BH) block(b, ys); }
+  for (const f of G.falling) { ctx.save(); const ys = ground - f.y + G.cam; ctx.translate(f.x + f.w / 2, ys - BH / 2); ctx.rotate(f.rot); ctx.globalAlpha = 0.9; K.rrect(ctx, -f.w / 2, -BH / 2, f.w, BH - 2, 5 * u); ctx.fillStyle = f.col; ctx.fill(); ctx.restore(); }
+  // crane + hanging block
+  if (G.phase === 'build') {
+    const top = G.blocks[G.blocks.length - 1], cx = top.x + top.w / 2 + (craneX() - S.W / 2) * 0.15, hy = ground - (top.y + BH * 3.2) + G.cam;
+    ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, hy - BH); ctx.stroke();
+    const next = G.queue[0];
+    block({ x: cx - top.w / 2, w: top.w, y: 0, u: next ? next.u : null, col: next && next.gold ? '#ffd27a' : HUES[G.blocks.length % HUES.length], gold: next && next.gold }, hy);
+    if (!next) K.text(ctx, 'COMMENT TO DROP!', cx, hy - BH - 14 * u, 13 * u, '#fff', 'center', 'inter');
+  }
+  // HUD
+  K.text(ctx, '🏗️ TOWER STACK', W / 2, 36 * u, 40 * u, '#fff');
+  K.rrect(ctx, W / 2 - 150 * u, 60 * u, 300 * u, 40 * u, 12 * u); ctx.fillStyle = 'rgba(11,9,16,.75)'; ctx.fill();
+  K.text(ctx, `FLOORS ${h - 1}`, W / 2 - 75 * u, 81 * u, 26 * u, '#ffb547', 'center', 'teko', 130 * u); K.text(ctx, `RECORD ${G.best}`, W / 2 + 75 * u, 81 * u, 26 * u, '#5be38f', 'center', 'teko', 130 * u);
+  if (G.queue.length) K.text(ctx, `${G.queue.length} BLOCK${G.queue.length > 1 ? 'S' : ''} IN LINE`, W / 2, 114 * u, 11 * u, '#fff', 'center', 'inter');
+  const rows = [...G.placed.values()].sort((a, b) => b.v - a.v).slice(0, 3).map(r => ({ u: r.u, v: r.v }));
+  if (rows.length) K.board(ctx, S, rows, W - 172 * u, 128 * u, 162 * u, '🧱 TOP BUILDERS', '#ffb547');
+}
+K.loop((dt, T) => {
+  G.T += dt;
+  if (G.phase === 'build') { G.dropT -= dt; if (G.dropT <= 0 && G.queue.length) { drop(G.queue.shift()); G.dropT = 0.75; } }
+  else { G.t += dt; if (G.t > 3.5) reset(); }
+  for (const f of G.falling) { f.vy -= 900 * S.u * dt; f.y += f.vy * dt; f.x += f.vx * dt; f.rot += (f.spin || (f.vx > 0 ? 2 : -2)) * dt; }
+  G.falling = G.falling.filter(f => f.y > -S.H);
+  const top = G.blocks[G.blocks.length - 1], want = Math.max(0, top.y - S.H * 0.38); G.cam += (want - G.cam) * Math.min(1, dt * 3);
+  draw(dt, T);
+});
+K.start({
+  title: 'TOWER STACK', desc: 'Your chat builds a tower together. Every comment drops a block with that viewer\'s photo from a swinging crane. Miss the edge and the block gets trimmed. Gifts drop golden blocks that land perfectly and widen the tower.',
+  rules: ['Comment anything = drop a block (1 every 3s)', 'Bad timing trims the block, and the tower falls when it gets too thin', '🎁 Gifts = golden blocks that fix the tower', 'Beat the height record together!'],
+  tips: [['COMMENT ANYTHING', 'TO DROP A BLOCK 🧱', '#ff8a3d'], ['🎁 GIFTS =', 'GOLDEN BLOCKS ✨', '#ffb547'], ['HELP US BEAT', 'THE RECORD 🏆', '#5be38f']],
+  onEvent, demo, demoEvery: 600, feedTop: 0.155, feedMax: 2, tipBottom: 0.01,
+  onStart() { K.banner('BUILD THE TOWER!', 'COMMENT TO DROP BLOCKS', '#ff8a3d', 1600); },
+});
+</script>
+</body></html>
